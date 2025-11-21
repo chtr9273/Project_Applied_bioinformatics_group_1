@@ -13,6 +13,7 @@ module load SAMtools/1.22-GCC-13.3.0
 # Pathways
 BASE=/proj/uppmax2025-2-380/project_work
 ALIGNDIR=$BASE/test_data/03_bowtie2
+FILTERDIR=$BASE/test_data/02_krakenuniq/filtered_krakenuniq_output
 OUTDIR=$BASE/test_data/04_authentication/coverage
 mkdir -p "$OUTDIR"
 
@@ -30,8 +31,24 @@ for SAMPLE in */; do
     SAMPLE_OUT=$OUTDIR/$SAMPLE
     mkdir -p "$SAMPLE_OUT"
 
+    FILTERFILE=$(ls $FILTERDIR/${SAMPLE}.fastq.gz.krakenuniq.output.filtered 2>/dev/null)
+
+    declare -A TAXNAME_MAP
+
+    if [[ -s "$FILTERFILE" ]]; then
+        echo "Using taxName lookup from $FILTERFILE"
+
+        # Build dictionary: taxID → taxName
+        while read TAXID RANK TAXNAME; do
+            TAXNAME_MAP[$TAXID]="$TAXNAME"
+        done < <(tail -n +2 "$FILTERFILE" | awk -F"\t" '{print $7 "\t" $8 "\t" $9}')
+    else
+        echo "No taxName source found for $SAMPLE (will output NA)"
+    fi
+
     SUMMARY="$SAMPLE_OUT/${SAMPLE}.coverage_summary.tsv"
-    echo -e "sample\ttaxID\tlength\tbases_covered\tcoverage_pct\tmean_depth\tmean_mapq" > "$SUMMARY"
+    echo -e "sample\ttaxID\ttaxName\tlength\tbases_covered\tcoverage_pct\tmean_depth\tmean_mapq" > "$SUMMARY"
+
 
     # Loop over BAM-files in the sample folder
     for BAM in "$SAMPLE"/*.bam; do
@@ -46,16 +63,23 @@ for SAMPLE in */; do
         # 1. samtools coverage -m
         COV_OUT="$SAMPLE_OUT/${SAMPLE}.${TAXID}.coverage.tsv"
 
-        samtools coverage -m "$BAM" > "$COV_OUT"
+        samtools coverage "$BAM" > "$COV_OUT"
 
         ROW=$(tail -n 1 "$COV_OUT")
-        LENGTH=$(echo "$ROW" | awk '{print $2}')
-        BASES=$(echo "$ROW" | awk '{print $3}')
-        PCT=$(echo "$ROW" | awk '{print $4}')
-        DEPTH=$(echo "$ROW" | awk '{print $5}')
-        MAPQ=$(echo "$ROW" | awk '{print $7}')
+        START=$(echo "$ROW" | awk '{print $2}')
+        END=$(echo "$ROW" | awk '{print $3}')
+        BASES=$(echo "$ROW" | awk '{print $5}')
+        PCT=$(echo "$ROW" | awk '{print $6}')
+        DEPTH=$(echo "$ROW" | awk '{print $7}')
+        MAPQ=$(echo "$ROW" | awk '{print $9}')
 
-        echo -e "${SAMPLE}\t${TAXID}\t${LENGTH}\t${BASES}\t${PCT}\t${DEPTH}\t${MAPQ}" >> "$SUMMARY"
+        LENGTH=$(( END - START + 1 ))
+
+        TAXNAME="${TAXNAME_MAP[$TAXID]}"
+        [[ -z "$TAXNAME" ]] && TAXNAME="NA"
+
+        echo -e "${SAMPLE}\t${TAXID}\t${TAXNAME}\t${LENGTH}\t${BASES}\t${PCT}\t${DEPTH}\t${MAPQ}" >> "$SUMMARY"
+        
 
         # 2. samtools depth -a
         DEPTH_OUT="$SAMPLE_OUT/${SAMPLE}.${TAXID}.depth.txt"
