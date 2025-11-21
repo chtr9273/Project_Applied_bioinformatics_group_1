@@ -1,0 +1,87 @@
+#!/bin/bash
+#SBATCH -A uppmax2025-2-380
+#SBATCH -M pelle
+#SBATCH -p pelle
+#SBATCH -n 4
+#SBATCH -t 08:00:00
+#SBATCH -J mapdamage
+#SBATCH -o /proj/uppmax2025-2-380/project_work/logs/04_authentication_logs/%x.%j.out
+#SBATCH -e /proj/uppmax2025-2-380/project_work/logs/04_authentication_logs/%x.%j.err
+
+# Load module
+module load mapDamage/2.2.3-gfbf-2024a
+
+# Pathways
+BASE=/proj/uppmax2025-2-380/project_work
+DBDIR=$BASE/resources/references/reference_db
+FASTA_DIR=$DBDIR/fasta
+
+BAMDIR=$BASE/test_data/03_bowtie2
+OUTBASE=$BASE/test_data/04_authentication/mapdamage
+mkdir -p "$OUTBASE"
+
+echo "MapDamage analysis started at: $(date)"
+
+# Loop through each sample directory
+for SAMPLE_DIR in "$BAMDIR"/*; do
+    [[ ! -d "$SAMPLE_DIR" ]] && continue
+    
+    SAMPLE=$(basename "$SAMPLE_DIR")
+    echo "Processing sample: $SAMPLE"
+    
+    # Loop through all BAM files in this sample directory
+    for BAM in "$SAMPLE_DIR"/*.bam; do
+        [[ ! -s "$BAM" ]] && continue
+        
+        # Extract taxID from filename
+        # Format: complex_name.taxID.bam 
+        BAMFILE=$(basename "$BAM" .bam)  # Remove .bam extension first
+        TAXID=$(echo "$BAMFILE" | grep -oE '[0-9]+$')  # Get digits at the end
+        
+        # Validate taxID was extracted
+        if [[ -z "$TAXID" ]]; then
+            echo "  Could not extract taxID from $BAMFILE — skipping"
+            continue
+        fi
+    
+        echo "  Processing taxID: $TAXID"
+        
+        # Find corresponding reference genome
+        REF_FASTA="$FASTA_DIR/${TAXID}.fasta"
+        if [[ ! -s "$REF_FASTA" ]]; then
+            echo "  No reference FASTA for taxID $TAXID — skipping"
+            continue
+        fi
+        
+        # Output directory for this specific BAM
+        OUTDIR="$OUTBASE/$SAMPLE/${TAXID}"
+        
+        # Skip if mapDamage results already exist (maybe unnessesary if we manage the batches well)
+        if [[ -d "$OUTDIR" ]] && [[ -s "$OUTDIR/Fragmisincorporation_plot.pdf" ]]; then
+            echo "  MapDamage results already exist for $TAXID — skipping"
+            continue
+        fi
+        
+        mkdir -p "$OUTDIR"
+        
+        echo "  Running mapDamage on $BAMFILE..."
+        
+        mapDamage \
+            -i "$BAM" \
+            -r "$REF_FASTA" \
+            -d "$OUTDIR" \
+            --merge-reference-sequences \
+            --no-stats \
+            -t "$SAMPLE.${TAXID}" \
+        
+        if [[ $? -eq 0 ]]; then
+            echo "  [OK] MapDamage completed for $TAXID"
+        else
+            echo "  [ERROR] MapDamage failed for $TAXID"
+        fi
+        
+    done
+    
+done
+
+echo "MapDamage analysis completed at: $(date)"
