@@ -1,0 +1,90 @@
+#!/bin/bash
+#SBATCH -A uppmax2025-2-380
+#SBATCH -M pelle
+#SBATCH -p pelle
+#SBATCH -n 4
+#SBATCH -t 08:00:00
+#SBATCH -J pmdtools
+#SBATCH -o /proj/uppmax2025-2-380/project_work/logs/04_authentication_logs/%x.%j.out
+#SBATCH -e /proj/uppmax2025-2-380/project_work/logs/04_authentication_logs/%x.%j.err
+
+# Load modules
+module load SAMtools/1.22-GCC-13.3.0
+module load Python/2.7.18-GCCcore-13.3.0
+
+# Pathways
+BASE=/proj/uppmax2025-2-380/project_work
+PMDTOOLS=$BASE/scripts/04_authentication_scripts  
+BAMDIR=$BASE/test_data/03_bowtie2
+OUTBASE=$BASE/test_data/04_authentication/pmdtools
+mkdir -p "$OUTBASE"
+
+echo "PMDtools analysis started at: $(date)"
+
+# Loop through each sample directory
+for SAMPLE_DIR in "$BAMDIR"/*; do
+    [[ ! -d "$SAMPLE_DIR" ]] && continue
+    
+    SAMPLE=$(basename "$SAMPLE_DIR")
+    echo "Processing sample: $SAMPLE"
+    
+    # Loop through all BAM files in this sample directory
+    for BAM in "$SAMPLE_DIR"/*.bam; do
+        [[ ! -s "$BAM" ]] && continue
+        
+        # Extract taxID from filename
+        BAMFILE=$(basename "$BAM" .bam)
+        TAXID=$(echo "$BAMFILE" | grep -oE '[0-9]+$')
+        
+        # Validate taxID was extracted
+        if [[ -z "$TAXID" ]]; then
+            echo "  Could not extract taxID from $BAMFILE — skipping"
+            continue
+        fi
+        
+        echo "  Processing taxID: $TAXID"
+        
+        # Output directory for this specific BAM
+        OUTDIR="$OUTBASE/$SAMPLE/${TAXID}"
+        mkdir -p "$OUTDIR"
+        
+        # Define output files
+        PMDSCORES="$OUTDIR/PMDscores.txt"
+        PLATYPUS="$OUTDIR/PMDtemp.txt"
+        
+        # Skip if both PMDtools outputs already exist (we could change this later depending on how we decide to handle batches)
+        if [[ -s "$PMDSCORES" ]] && [[ -s "$PLATYPUS" ]]; then
+            echo "  PMDtools results already exist for $TAXID — skipping"
+            continue
+        fi
+        
+        echo "  Running PMDtools on $BAMFILE..."
+        
+        # Generate PMD scores with --printDS
+        echo "    Generating PMD scores..."
+        samtools view -h "$BAM" | python2.7 "$PMDTOOLS/pmdtools.0.60.py" \
+            --printDS > "$PMDSCORES"
+        
+        if [[ $? -ne 0 ]]; then
+            echo "  [ERROR] PMDtools --printDS failed for $TAXID"
+            continue
+        fi
+        
+        # Generate Platypus format output
+        echo "    Generating Platypus format..."
+        samtools view "$BAM" | python2.7 "$PMDTOOLS/pmdtools.0.60.py" \
+            --platypus > "$PLATYPUS"
+        
+        if [[ $? -eq 0 ]]; then
+            echo "  [OK] PMDtools completed for $TAXID"
+            echo "    PMD scores: $PMDSCORES"
+            echo "    Platypus: $PLATYPUS"
+        else
+            echo "  [ERROR] PMDtools --platypus failed for $TAXID"
+        fi
+        
+    done
+    
+done
+
+echo "PMDtools analysis completed at: $(date)"
