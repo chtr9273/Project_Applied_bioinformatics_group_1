@@ -1,0 +1,40 @@
+#!/bin/bash
+#SBATCH -A uppmax2025-2-380
+#SBATCH -M pelle
+#SBATCH -p pelle
+#SBATCH -n 16
+#SBATCH -t 12:00:00
+#SBATCH -J remove_host_dna
+#SBATCH -o /proj/uppmax2025-2-380/project_work/logs/01_host_removal_logs/%j.out
+#SBATCH -e /proj/uppmax2025-2-380/project_work/logs/01_host_removal_logs/%j.err
+
+module load Bowtie2
+module load SAMtools
+
+base=/proj/uppmax2025-2-380/project_work
+samples=${base}/test_data/00_raw_data/test_data_fq_files.txt
+human_ref=${base}/resources/references/human_reference_genome/hg38.fa.gz
+
+for sample in $(cat ${samples}); do
+    echo "Performing host removal for sample: ${sample}"
+    echo "Node: $(hostname)"
+    echo "Time: $(date)"
+
+	bowtie2 --large-index -x ${human_ref} --end-to-end --threads 16 --very-sensitive \
+	${base}/test_data/00_raw_data/${sample} | samtools view -bS -h -@ 16 - \
+	> ${base}/test_data/01_host_removal/${sample}_aligned_to_hg38.bam
+	
+	samtools sort ${base}/test_data/01_host_removal/${sample}_aligned_to_hg38.bam -@ 16 \
+	> ${base}/test_data/01_host_removal/${sample}_aligned_to_hg38.sorted.bam
+	
+	samtools index ${base}/test_data/01_host_removal/${sample}_aligned_to_hg38.sorted.bam
+	samtools view -b -f 4 ${base}/test_data/01_host_removal/${sample}_aligned_to_hg38.sorted.bam \
+	> ${base}/test_data/01_host_removal/${sample}_unaligned_to_hg38.bam
+
+	samtools bam2fq ${base}/test_data/01_host_removal/${sample}_unaligned_to_hg38.bam | gzip \
+	> ${base}/test_data/01_host_removal/${sample}_unaligned_to_hg38.fastq.gz
+
+    echo "Done with ${sample} at $(date)."
+done
+
+echo "Done with all samples."

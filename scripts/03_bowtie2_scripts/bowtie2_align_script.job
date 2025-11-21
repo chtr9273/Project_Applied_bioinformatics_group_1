@@ -1,0 +1,101 @@
+#!/bin/bash
+#SBATCH -A uppmax2025-2-380
+#SBATCH -M pelle
+#SBATCH -p pelle
+#SBATCH -n 8
+#SBATCH -t 12:00:00
+#SBATCH -J bowtie2_align
+#SBATCH -o /proj/uppmax2025-2-380/project_work/logs/03_bowtie2_logs/bowtie2_align_logs/%j.out
+#SBATCH -e /proj/uppmax2025-2-380/project_work/logs/03_bowtie2_logs/bowtie2_align_logs/%j.err
+
+module load Bowtie2/2.5.4-GCCcore-13.3.0
+module load SAMtools/1.22-GCC-13.3.0
+
+# Pathways
+BASE=/proj/uppmax2025-2-380/project_work
+RAW=$BASE/test_data/00_raw_data
+FILTERED=$BASE/test_data/02_krakenuniq/filtered_krakenuniq_output
+DBDIR=$BASE/resources/references/reference_db
+FASTA_DIR=$DBDIR/fasta
+BT2_DIR=$DBDIR/bt2
+
+OUTBASE=$BASE/test_data/03_bowtie2
+mkdir -p "$OUTBASE" "$BT2_DIR"
+
+# Justera för varje batch
+SAMPLELIST=$RAW/test_data_fq_files.txt
+echo "Bowtie2 alignment started at: $(date)"
+
+
+# Loop over samples
+while read SAMPLE; do
+    [[ -z "$SAMPLE" ]] && continue
+    echo " Sample: $SAMPLE"
+
+    # Remove .fastq.gz suffix for internal naming
+    BASENAME=$(basename "$SAMPLE" .fastq.gz)
+
+    READS="$RAW/${BASENAME}.fastq.gz"
+    FILTERFILE="$FILTERED/${BASENAME}.fastq.gz.krakenuniq.output.filtered"
+
+    # Validate input files
+    if [[ ! -s "$READS" ]]; then
+        echo "Missing reads file: $READS"
+        continue
+    fi
+
+    if [[ ! -s "$FILTERFILE" ]]; then
+        echo "Missing filtered KrakenUniq file: $FILTERFILE"
+        continue
+    fi
+
+    # Output directory for this sample
+    OUTDIR="$OUTBASE/$BASENAME"
+    mkdir -p "$OUTDIR"
+
+    # Loop over taxID's (column 7 in .filtered)
+    cut -f7 "$FILTERFILE" | tail -n +2 | sort -u | while read TAXID; do
+        [[ -z "$TAXID" ]] && continue
+
+        echo "taxID $TAXID"
+
+        REF_FASTA="$FASTA_DIR/${TAXID}.fasta"
+        if [[ ! -s "$REF_FASTA" ]]; then
+            echo "No reference FASTA for $TAXID — skipping"
+            continue
+        fi
+
+        INDEX_PREFIX="$BT2_DIR/${TAXID}"
+
+        # Build index if missing
+        if [[ ! -s "${INDEX_PREFIX}.1.bt2" ]]; then
+            echo "Building bowtie2 index for $TAXID"
+            bowtie2-build "$REF_FASTA" "$INDEX_PREFIX"
+        fi
+
+        BAM="$OUTDIR/${BASENAME}.${TAXID}.bam"
+
+        # Skip if BAM already exists
+        if [[ -s "$BAM" ]]; then
+            echo "BAM already exists. skipping"
+            continue
+        fi
+
+        echo "Mapping reads..."
+
+        bowtie2 --end-to-end --very-sensitive \
+            -x "$INDEX_PREFIX" \
+            -U "$READS" \
+            -p 8 \
+        | samtools view -bS -q 1 - \
+        | samtools sort -o "$BAM"
+
+        samtools index "$BAM"
+
+        echo " Done: $BAM"
+
+    done
+
+done < "$SAMPLELIST"
+
+echo "Bowtie2 alignment completed at: $(date)"
