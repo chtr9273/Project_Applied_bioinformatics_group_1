@@ -38,7 +38,7 @@ cd "$DATADIR"
 ALL_TAXIDS=$DBDIR/all_taxids.txt
 > "$ALL_TAXIDS"
 
-for FILE in *.krakenuniq.output.filtered; do
+for FILE in *.krakenuniq.output.pathogens; do
     cut -f7 "$FILE" | tail -n +2 >> "$ALL_TAXIDS"
 done
 

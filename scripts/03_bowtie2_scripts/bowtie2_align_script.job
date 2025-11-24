@@ -36,7 +36,7 @@ while read SAMPLE; do
     BASENAME=$(basename "$SAMPLE" .fastq.gz)
 
     READS="$RAW/${BASENAME}.fastq.gz"
-    FILTERFILE="$FILTERED/${BASENAME}.fastq.gz.krakenuniq.output.filtered"
+    FILTERFILE="$FILTERED/${BASENAME}.fastq.gz.krakenuniq.output.pathogens"
 
     # Validate input files
     if [[ ! -s "$READS" ]]; then
