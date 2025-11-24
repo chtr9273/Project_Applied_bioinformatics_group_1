@@ -16,6 +16,8 @@ BASE=/proj/uppmax2025-2-380/project_work
 DBDIR=$BASE/resources/references/reference_db
 FASTA_DIR=$DBDIR/fasta
 
+PATHOGENS_DIR=$BASE/test_data/02_krakenuniq/filtered_krakenuniq_output
+
 BAMDIR=$BASE/test_data/03_bowtie2
 OUTBASE=$BASE/test_data/04_authentication/mapdamage
 mkdir -p "$OUTBASE"
@@ -63,21 +65,43 @@ for SAMPLE_DIR in "$BAMDIR"/*; do
         fi
         
         mkdir -p "$OUTDIR"
+                
+        # Find the corresponding pathogens file for this sample
+        PATHOGENS_FILE="$PATHOGENS_DIR/${SAMPLE}.fastq.gz.krakenuniq.output.pathogens"
+    
+        if [[ ! -s "$PATHOGENS_FILE" ]]; then
+            echo "  Warning: No pathogens file found at $PATHOGENS_FILE"
+        fi
+
+        # Extract species name from krakenuniq pathogens output file (to include in the plots)
+        SPECIES="Unknown"
+        if [[ -s "$PATHOGENS_FILE" ]]; then
+            SPECIES=$(awk -v taxid="$TAXID" '$7 == taxid {print $9, $10; exit}' "$PATHOGENS_FILE")
+            # If species name is empty, use Unknown
+            [[ -z "$SPECIES" ]] && SPECIES="Unknown_${TAXID}"
+        else
+            SPECIES="Unknown_${TAXID}"
+        fi
         
+        echo "  Species: $SPECIES"
+
+        PLOT_TITLE=$SPECIES
+
         echo "  Running mapDamage on $BAMFILE..."
-        
+
         mapDamage \
             -i "$BAM" \
             -r "$REF_FASTA" \
             -d "$OUTDIR" \
             --merge-reference-sequences \
             --no-stats \
-            -t "$SAMPLE.${TAXID}" \
+            -t "$PLOT_TITLE" \
+            # -t "$SAMPLE.${TAXID}" \
         
         if [[ $? -eq 0 ]]; then
-            echo "  [OK] MapDamage completed for $TAXID"
+            echo "  [OK] MapDamage completed for $TAXID: $SPECIES"
         else
-            echo "  [ERROR] MapDamage failed for $TAXID"
+            echo "  [ERROR] MapDamage failed for $TAXID: $SPECIES"
         fi
         
     done
