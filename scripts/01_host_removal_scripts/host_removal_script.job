@@ -8,7 +8,7 @@
 #SBATCH -o /proj/uppmax2025-2-380/project_work/logs/01_host_removal_logs/%j.out
 #SBATCH -e /proj/uppmax2025-2-380/project_work/logs/01_host_removal_logs/%j.err
 
-# OBS: Remember to run as "sbatch host_removal_script.job --array=1-("num_samples")%10 batchn"
+# OBS: Remember to run as "sbatch --array=1-("num_samples")%10 host_removal_script.job batchn"
 # Where num_samples is the number of samples in the batch. Check this manually. 
 
 # Check for batch argument
