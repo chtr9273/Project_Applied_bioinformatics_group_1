@@ -16,8 +16,9 @@ source activate ${base}/environments/conda_envs/krakenuniq
 echo "KrakenUniq loaded."
 
 db=/proj/uppmax2025-2-380/private/DATA/DBDIR_KrakenUniq_MicrobialNT_Plus_CompleteGenomes
-# .txt file with the file names of the FASTQ-files we want to run
-samples=${base}/scripts/02_krakenuniq_scripts/samples_to_run_krakenuniq.txt 
+
+# .txt file with the file names of the FASTQ-files we want to run. Edit this file depending on the input.
+samples=${base}/resources/krakenuniq_resources/samples_to_run_krakenuniq.txt
 
 # COPY DATABASE TO LOCAL SSD ($SNIC_TMP)
 echo "Copying KrakenUniq database to \$SNIC_TMP..."
@@ -46,11 +47,11 @@ for sample in $(cat ${samples}); do
     echo "Time: $(date)"
 
     krakenuniq --db "$db_local" \
-    --fastq-input ${base}/test_data/01_host_removal/${sample}_unaligned_to_hg38.fastq.gz \
-    --threads 16 --classified-out ${base}/test_data/02_krakenuniq/${sample}.classified_sequences.krakenuniq \
-    --unclassified-out ${base}/test_data/02_krakenuniq/${sample}.unclassified_sequences.krakenuniq \
-    --output ${base}/test_data/02_krakenuniq/${sample}.sequences.krakenuniq \
-    --report-file ${base}/test_data/02_krakenuniq/${sample}.krakenuniq.output
+    --fastq-input ${base}/data/01_host_removal/${sample}_unaligned_to_hg38.fastq.gz \
+    --threads 16 --classified-out ${base}/data/02_krakenuniq/${sample}.classified_sequences.krakenuniq \
+    --unclassified-out ${base}/data/02_krakenuniq/${sample}.unclassified_sequences.krakenuniq \
+    --output ${base}/data/02_krakenuniq/${sample}.sequences.krakenuniq \
+    --report-file ${base}/data/02_krakenuniq/${sample}.krakenuniq.output
 
     echo "Done with KrakenUniq classification for sample: ${sample}"
     echo "Time: $(date)"

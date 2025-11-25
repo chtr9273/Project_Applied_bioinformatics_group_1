@@ -1,0 +1,17 @@
+#!/bin/bash
+#SBATCH -A uppmax2025-2-380
+#SBATCH -M pelle
+#SBATCH -p pelle
+#SBATCH -n 4
+#SBATCH -t 02:00:00
+#SBATCH -J softlink_fastq_files
+
+base=/proj/uppmax2025-2-380
+datadir=${base}/private/DATA/FASTQ/batch1
+samples=${base}/project_work/data/00_raw_data/batch1/batch1_fq_files.txt
+outdir=${base}/project_work/ata/00_raw_data/batch1
+
+while read -r i; do
+    echo "Linking: ${datadir}${i} -> ${outdir}"
+    ln -s "${datadir}${i}" "${outdir}"
+done < "$samples"
