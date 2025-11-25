@@ -3,59 +3,76 @@
 #SBATCH -M pelle
 #SBATCH -p pelle
 #SBATCH -n 16
-#SBATCH -t 10:00:00
-#SBATCH -J krakenuniq_taxonomic_profiling_test_data
+#SBATCH -t 12:00:00
+#SBATCH -J krakenuniq_taxonomic_profiling_data
 #SBATCH -o /proj/uppmax2025-2-380/project_work/logs/02_krakenuniq_logs/%j.out
 #SBATCH -e /proj/uppmax2025-2-380/project_work/logs/02_krakenuniq_logs/%j.err
+
+# OBS: Remember to run as "sbatch krakenuniq_script.job batch_name sample_name"
+
+set -euo pipefail
+
+# Check command-line arguments
+if [ $# -ne 2 ]; then
+    echo "Usage: sbatch $0 <batch_name> <sample_name>"
+    exit 1
+fi
+
+batch=$1
+sample=$2
 
 base=/proj/uppmax2025-2-380/project_work
 
 echo "Loading KrakenUniq in conda environment..."
 module load Miniconda3/24.7.1-0
-source activate ${base}/environments/conda_envs/krakenuniq
+source activate "${base}/environments/conda_envs/krakenuniq"
 echo "KrakenUniq loaded."
 
 db=/proj/uppmax2025-2-380/private/DATA/DBDIR_KrakenUniq_MicrobialNT_Plus_CompleteGenomes
 
-# .txt file with the file names of the FASTQ-files we want to run. Edit this file depending on the input.
-samples=${base}/resources/krakenuniq_resources/samples_to_run_krakenuniq.txt
+# Check that input FASTQ exists
+input_fastq="${base}/data/01_host_removal/${batch}/host_removed/${sample}_unaligned_to_hg38.fastq.gz"
+if [ ! -f "$input_fastq" ]; then
+    echo "ERROR: Input FASTQ not found: $input_fastq"
+    exit 1
+fi
 
-# COPY DATABASE TO LOCAL SSD ($SNIC_TMP)
-echo "Copying KrakenUniq database to \$SNIC_TMP..."
-echo "Source: $db"
-echo "Target: $SNIC_TMP/krakenuniq_db"
-echo "Time: $(date)" 
-
-# Ensure target directory does not already exist
-rm -rf $SNIC_TMP/krakenuniq_db
-
-# -L ensures symlinks are dereferenced (actual data is copied)
-cp -rL "$db" "$SNIC_TMP/krakenuniq_db"
-
-echo "Database copy complete."
-echo "Time: $(date)"
-echo "Database size on local SSD:"
-du -sh $SNIC_TMP/krakenuniq_db
-
-# Set database path
+# Prepare local scratch for database and outputs
 db_local=$SNIC_TMP/krakenuniq_db
+scratch_out=$SNIC_TMP/krakenuniq_output
+mkdir -p "$scratch_out"
 
-for sample in $(cat ${samples}); do
+echo "Copying KrakenUniq database to $SNIC_TMP..."
+echo "Time: $(date)"
+rm -rf "$db_local"
+cp -rL "$db" "$db_local"
+echo "Database copy complete. Size:"
+du -sh "$db_local"
+echo "Time: $(date)"
 
-    echo "Performing KrakenUniq classification for sample: ${sample}"
-    echo "Node: $(hostname)"
-    echo "Time: $(date)"
+# Local output files
+classified="$scratch_out/${sample}.classified_sequences.krakenuniq"
+unclassified="$scratch_out/${sample}.unclassified_sequences.krakenuniq"
+output="$scratch_out/${sample}.sequences.krakenuniq"
+report="$scratch_out/${sample}.krakenuniq.output"
 
-    krakenuniq --db "$db_local" \
-    --fastq-input ${base}/data/01_host_removal/${sample}_unaligned_to_hg38.fastq.gz \
-    --threads 16 --classified-out ${base}/data/02_krakenuniq/${sample}.classified_sequences.krakenuniq \
-    --unclassified-out ${base}/data/02_krakenuniq/${sample}.unclassified_sequences.krakenuniq \
-    --output ${base}/data/02_krakenuniq/${sample}.sequences.krakenuniq \
-    --report-file ${base}/data/02_krakenuniq/${sample}.krakenuniq.output
+echo "Performing KrakenUniq classification for sample: ${sample} at time: $(date) on node: $(hostname)."
 
-    echo "Done with KrakenUniq classification for sample: ${sample}"
-    echo "Time: $(date)"
+krakenuniq --db "$db_local" \
+    --fastq-input "$input_fastq" \
+    --threads 16 --classified-out "$classified" \
+    --unclassified-out "$unclassified" \
+    --output "$output" \
+    --report-file "$report"
 
-done
+echo "Done with KrakenUniq classification for sample: ${sample} at time: $(date)."
+echo "Compressing outputs and moving files to output directory..."
 
-echo "Done with KrakenUniq classification for all samples"
+# Gunzip large files, keep report file for later filtering
+gzip -f "$classified" "$unclassified" "$output"
+
+echo "Moving outputs to project directory..."
+mkdir -p "${base}/data/02_krakenuniq/${batch}"
+mv "$scratch_out"/* "${base}/data/02_krakenuniq/${batch}/"
+
+echo "All done with sample: ${sample} at time: $(date)."
