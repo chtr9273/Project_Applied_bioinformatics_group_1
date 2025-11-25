@@ -2,39 +2,48 @@
 #SBATCH -A uppmax2025-2-380
 #SBATCH -M pelle
 #SBATCH -p pelle
-#SBATCH -n 16
+#SBATCH -n 8
 #SBATCH -t 12:00:00
 #SBATCH -J remove_host_dna
 #SBATCH -o /proj/uppmax2025-2-380/project_work/logs/01_host_removal_logs/%j.out
 #SBATCH -e /proj/uppmax2025-2-380/project_work/logs/01_host_removal_logs/%j.err
 
+# OBS: Remember to run as "sbatch host_removal_script.job --array=1-("num_samples")%10 batchn"
+# Where num_samples is the number of samples in the batch. Check this manually. 
+
+# Check for batch argument
+if [ -z "$1" ]; then
+    echo "Usage: sbatch $0 <batch_name>"
+    exit 1
+fi
+batch=$1
+
 module load Bowtie2
 module load SAMtools
+module load pigz/2.8-GCCcore-13.3.0
 
 base=/proj/uppmax2025-2-380/project_work
-samples=${base}/test_data/00_raw_data/test_data_fq_files.txt
+samples=${base}/data/00_raw_data/${batch}/${batch}_fq_files.txt
 human_ref=${base}/resources/references/human_reference_genome/hg38.fa.gz
 
-for sample in $(cat ${samples}); do
-    echo "Performing host removal for sample: ${sample}"
-    echo "Node: $(hostname)"
-    echo "Time: $(date)"
+# Extract only the sample name for each sample (not the .fastq.gz extension)
+sample=$(sed -n "${SLURM_ARRAY_TASK_ID}p" ${samples})
+sample_base=${sample%.fastq.gz}
 
-	bowtie2 --large-index -x ${human_ref} --end-to-end --threads 16 --very-sensitive \
-	${base}/test_data/00_raw_data/${sample} | samtools view -bS -h -@ 16 - \
-	> ${base}/test_data/01_host_removal/${sample}_aligned_to_hg38.bam
-	
-	samtools sort ${base}/test_data/01_host_removal/${sample}_aligned_to_hg38.bam -@ 16 \
-	> ${base}/test_data/01_host_removal/${sample}_aligned_to_hg38.sorted.bam
-	
-	samtools index ${base}/test_data/01_host_removal/${sample}_aligned_to_hg38.sorted.bam
-	samtools view -b -f 4 ${base}/test_data/01_host_removal/${sample}_aligned_to_hg38.sorted.bam \
-	> ${base}/test_data/01_host_removal/${sample}_unaligned_to_hg38.bam
+echo "Performing host removal for sample: ${sample} at $(date) on node $(hostname)."
 
-	samtools bam2fq ${base}/test_data/01_host_removal/${sample}_unaligned_to_hg38.bam | gzip \
-	> ${base}/test_data/01_host_removal/${sample}_unaligned_to_hg38.fastq.gz
+input=${base}/data/00_raw_data/${batch}/${sample}
+out_fastq=${base}/data/01_host_removal/${sample_base}_unaligned_to_hg38.fastq.gz
+stats_file=${base}/data/01_host_removal/${sample_base}_host_alignment_stats.txt
 
-    echo "Done with ${sample} at $(date)."
-done
+#  Bowtie2 → samtools filter unaligned (-f 4) → FASTQ → pigz. Returns only fastq.gz-files.
+#  Saves alignment stats in the file _host_alignment_stats.txt (% mapped etc)
+bowtie2 --large-index -x ${human_ref} \
+    --end-to-end --very-sensitive --threads 8 \
+    -U ${input} \
+| tee >(samtools view -b -f 4 -@ 2 - \
+	| samtools fastq -@ 2 - \
+	| pigz -p 2 > ${out_fastq}) \
+| samtools flagstat - > ${stats_file}
 
-echo "Done with all samples."
+echo "Finished with host removal for sample: ${sample} at $(date)."

@@ -6,12 +6,21 @@
 #SBATCH -t 02:00:00
 #SBATCH -J softlink_fastq_files
 
+# OBS: Remember to run as "sbatch softlink_raw_data_script.job batchn"
+
+# Check for batch argument
+if [ -z "$1" ]; then
+    echo "Usage: sbatch $0 <batch_name>"
+    exit 1
+fi
+batch=$1
+
 base=/proj/uppmax2025-2-380
-datadir=${base}/private/DATA/FASTQ/batch1
-samples=${base}/project_work/data/00_raw_data/batch1/batch1_fq_files.txt
-outdir=${base}/project_work/ata/00_raw_data/batch1
+datadir=${base}/private/DATA/FASTQ/${batch}
+samples=${base}/project_work/data/00_raw_data/${batch}/${batch}_fq_files.txt
+outdir=${base}/project_work/data/00_raw_data/${batch}
 
 while read -r i; do
     echo "Linking: ${datadir}${i} -> ${outdir}"
-    ln -s "${datadir}${i}" "${outdir}"
+    ln -s "${datadir}/${i}" "${outdir}"
 done < "$samples"
