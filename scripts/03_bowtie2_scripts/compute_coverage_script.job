@@ -10,7 +10,6 @@
 
 module load SAMtools/1.22-GCC-13.3.0
 
-# Pathways
 BASE=/proj/uppmax2025-2-380/project_work
 ALIGNDIR=$BASE/test_data/03_bowtie2
 FILTERDIR=$BASE/test_data/02_krakenuniq/filtered_krakenuniq_output
@@ -21,13 +20,10 @@ echo "Coverage computation started at: $(date)"
 
 cd "$ALIGNDIR"
 
-# Loop over sample-folders
 for SAMPLE in */; do
-    SAMPLE=${SAMPLE%/}   
-
+    SAMPLE=${SAMPLE%/}
     echo " Sample: $SAMPLE"
 
-    # Output folder for samples
     SAMPLE_OUT=$OUTDIR/$SAMPLE
     mkdir -p "$SAMPLE_OUT"
 
@@ -37,32 +33,24 @@ for SAMPLE in */; do
 
     if [[ -s "$FILTERFILE" ]]; then
         echo "Using taxName lookup from $FILTERFILE"
-
-        # Build dictionary: taxID → taxName
         while read TAXID RANK TAXNAME; do
             TAXNAME_MAP[$TAXID]="$TAXNAME"
         done < <(tail -n +2 "$FILTERFILE" | awk -F"\t" '{print $7 "\t" $8 "\t" $9}')
-    else
-        echo "No taxName source found for $SAMPLE (will output NA)"
     fi
 
     SUMMARY="$SAMPLE_OUT/${SAMPLE}.coverage_summary.tsv"
-    echo -e "sample\ttaxID\ttaxName\tlength\tbases_covered\tcoverage_pct\tmean_depth\tmean_mapq" > "$SUMMARY"
+    echo -e "sample\ttaxID\ttaxName\tmapped_reads\tlength\tbases_covered\tcoverage_pct\tmean_depth\tmean_mapq" > "$SUMMARY"
 
-
-    # Loop over BAM-files in the sample folder
     for BAM in "$SAMPLE"/*.bam; do
         [[ -s "$BAM" ]] || continue
 
-        # Extract taxID from filename
-        # Format: BASENAME.TAXID.bam
         TAXID=$(basename "$BAM" | sed 's/.*\.\([0-9]*\)\.bam/\1/')
+        echo "  → taxID $TAXID"
 
-        echo "taxID $TAXID"
+        # Count mapped reads
+        MAPPED=$(samtools view -c "$BAM")
 
-        # 1. samtools coverage -m
         COV_OUT="$SAMPLE_OUT/${SAMPLE}.${TAXID}.coverage.tsv"
-
         samtools coverage "$BAM" > "$COV_OUT"
 
         ROW=$(tail -n 1 "$COV_OUT")
@@ -78,17 +66,11 @@ for SAMPLE in */; do
         TAXNAME="${TAXNAME_MAP[$TAXID]}"
         [[ -z "$TAXNAME" ]] && TAXNAME="NA"
 
-        echo -e "${SAMPLE}\t${TAXID}\t${TAXNAME}\t${LENGTH}\t${BASES}\t${PCT}\t${DEPTH}\t${MAPQ}" >> "$SUMMARY"
-        
+        printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+        "$SAMPLE" "$TAXID" "$TAXNAME" "$MAPPED" "$LENGTH" "$BASES" "$PCT" "$DEPTH" "$MAPQ" >> "$SUMMARY"
 
-        # 2. samtools depth -a
-        DEPTH_OUT="$SAMPLE_OUT/${SAMPLE}.${TAXID}.depth.txt"
-        samtools depth -a "$BAM" > "$DEPTH_OUT"
-
-        echo "Coverage + Depth OK"
-
+        samtools depth -a "$BAM" > "$SAMPLE_OUT/${SAMPLE}.${TAXID}.depth.txt"
     done
-
 done
 
 echo "Coverage computation completed at: $(date)"

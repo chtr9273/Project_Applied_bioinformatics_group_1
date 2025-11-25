@@ -2,7 +2,7 @@
 #SBATCH -A uppmax2025-2-380
 #SBATCH -M pelle
 #SBATCH -p pelle
-#SBATCH -n 8
+#SBATCH -n 16
 #SBATCH -t 12:00:00
 #SBATCH -J bowtie2_align
 #SBATCH -o /proj/uppmax2025-2-380/project_work/logs/03_bowtie2_logs/bowtie2_align_logs/%j.out
@@ -22,38 +22,41 @@ BT2_DIR=$DBDIR/bt2
 OUTBASE=$BASE/test_data/03_bowtie2
 mkdir -p "$OUTBASE" "$BT2_DIR"
 
-# Justera för varje batch
 SAMPLELIST=$RAW/test_data_fq_files.txt
 echo "Bowtie2 alignment started at: $(date)"
-
 
 # Loop over samples
 while read SAMPLE; do
     [[ -z "$SAMPLE" ]] && continue
     echo " Sample: $SAMPLE"
 
-    # Remove .fastq.gz suffix for internal naming
     BASENAME=$(basename "$SAMPLE" .fastq.gz)
 
     READS="$RAW/${BASENAME}.fastq.gz"
     FILTERFILE="$FILTERED/${BASENAME}.fastq.gz.krakenuniq.output.pathogens"
 
-    # Validate input files
+    # Validate
     if [[ ! -s "$READS" ]]; then
         echo "Missing reads file: $READS"
         continue
     fi
-
     if [[ ! -s "$FILTERFILE" ]]; then
         echo "Missing filtered KrakenUniq file: $FILTERFILE"
         continue
     fi
 
-    # Output directory for this sample
     OUTDIR="$OUTBASE/$BASENAME"
     mkdir -p "$OUTDIR"
 
-    # Loop over taxID's (column 7 in .filtered)
+    # Create scratch for mapping
+    SCRATCH_DIR="$SNIC_TMP/${BASENAME}"
+    rm -rf "$SCRATCH_DIR"
+    mkdir -p "$SCRATCH_DIR"
+
+    cp "$READS" "$SCRATCH_DIR/"
+    LOCAL_READS="$SCRATCH_DIR/${BASENAME}.fastq.gz"
+
+    # Loop over taxID's
     cut -f7 "$FILTERFILE" | tail -n +2 | sort -u | while read TAXID; do
         [[ -z "$TAXID" ]] && continue
 
@@ -74,27 +77,39 @@ while read SAMPLE; do
         fi
 
         BAM="$OUTDIR/${BASENAME}.${TAXID}.bam"
-
-        # Skip if BAM already exists
         if [[ -s "$BAM" ]]; then
             echo "BAM already exists. skipping"
             continue
         fi
 
-        echo "Mapping reads..."
+        echo "Mapping reads (in scratch)..."
+        start=$(date +%s)
 
         bowtie2 --end-to-end --very-sensitive \
             -x "$INDEX_PREFIX" \
-            -U "$READS" \
+            -U "$LOCAL_READS" \
             -p 8 \
         | samtools view -bS -q 1 - \
-        | samtools sort -o "$BAM"
+        | samtools sort -o "$SCRATCH_DIR/${TAXID}.bam"
 
-        samtools index "$BAM"
+        samtools index "$SCRATCH_DIR/${TAXID}.bam"
+
+
+        end=$(date +%s)
+        echo "Mapping time: $((end - start)) seconds"
+
+        # Move results back to project storage
+        cp "$SCRATCH_DIR/${TAXID}.bam" "$BAM"
+        cp "$SCRATCH_DIR/${TAXID}.bam.bai" "$BAM.bai"
 
         echo " Done: $BAM"
 
+        # Clean taxID-specific temp files
+        rm -f "$SCRATCH_DIR/${TAXID}.bam"*
     done
+
+    # Remove reads from scratch
+    rm -rf "$SCRATCH_DIR"
 
 done < "$SAMPLELIST"
 

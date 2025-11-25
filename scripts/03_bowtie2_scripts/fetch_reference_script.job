@@ -11,7 +11,7 @@
 module load SAMtools/1.22-GCC-13.3.0
 
 
-#  Pathways
+# Pathways
 BASE=/proj/uppmax2025-2-380/project_work
 
 # Här måste sökvägen sedan uppdateras för batches typ filtering/batch1 etc ..? annars söks alla igenom varje gång
