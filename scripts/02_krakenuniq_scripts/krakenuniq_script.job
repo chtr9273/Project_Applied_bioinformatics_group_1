@@ -2,7 +2,10 @@
 #SBATCH -A uppmax2025-2-380
 #SBATCH -M pelle
 #SBATCH -p pelle
-#SBATCH -n 16
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=16
+#SBATCH --exclusive
 #SBATCH -t 12:00:00
 #SBATCH -J krakenuniq_taxonomic_profiling_data
 #SBATCH -o /proj/uppmax2025-2-380/project_work/logs/02_krakenuniq_logs/%j.out
@@ -21,14 +24,18 @@ fi
 batch=$1
 sample=$2
 
+echo "Running script for sample $sample in $batch."
+
 base=/proj/uppmax2025-2-380/project_work
 
+# Load KrakenUniq
 echo "Loading KrakenUniq in conda environment..."
 module load Miniconda3/24.7.1-0
 source activate "${base}/environments/conda_envs/krakenuniq"
 echo "KrakenUniq loaded."
 
-db=/proj/uppmax2025-2-380/private/DATA/DBDIR_KrakenUniq_MicrobialNT_Plus_CompleteGenomes
+# Path to source DB
+db_src=/proj/uppmax2025-2-380/private/DATA/DBDIR_KrakenUniq_MicrobialNT_Plus_CompleteGenomes
 
 # Check that input FASTQ exists
 input_fastq="${base}/data/01_host_removal/${batch}/host_removed/${sample}_unaligned_to_hg38.fastq.gz"
@@ -37,18 +44,18 @@ if [ ! -f "$input_fastq" ]; then
     exit 1
 fi
 
-# Prepare local scratch for database and outputs
-db_local=$SNIC_TMP/krakenuniq_db
-scratch_out=$SNIC_TMP/krakenuniq_output
-mkdir -p "$scratch_out"
+db_local="$SNIC_TMP/krakenuniq_db"
 
-echo "Copying KrakenUniq database to $SNIC_TMP..."
+echo "Copying KrakenUniq database to job-local scratch..."
 echo "Time: $(date)"
-rm -rf "$db_local"
-cp -rL "$db" "$db_local"
-echo "Database copy complete. Size:"
-du -sh "$db_local"
-echo "Time: $(date)"
+rm -rf "$db_local"  # ensure clean copy
+cp -rL "$db_src" "$db_local"
+sync
+echo "Database copy completed. Time: $(date)"
+
+# Make sample-specific local scratch directory for output files
+scratch_out=$SNIC_TMP/krakenuniq_output_${sample}
+mkdir -p "$scratch_out"
 
 # Local output files
 classified="$scratch_out/${sample}.classified_sequences.krakenuniq"
