@@ -6,25 +6,28 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=16
 #SBATCH --exclusive
-#SBATCH -t 12:00:00
+#SBATCH -t 24:00:00
 #SBATCH -J krakenuniq_taxonomic_profiling_data
 #SBATCH -o /proj/uppmax2025-2-380/project_work/logs/02_krakenuniq_logs/%j.out
 #SBATCH -e /proj/uppmax2025-2-380/project_work/logs/02_krakenuniq_logs/%j.err
 
-# OBS: Remember to run as "sbatch krakenuniq_script.job batch_name sample_name"
+# OBS: Remember to run as "sbatch --array=1-N%M krakenuniq_script.job batch_name sample_list"
 
 set -euo pipefail
 
 # Check command-line arguments
 if [ $# -ne 2 ]; then
-    echo "Usage: sbatch $0 <batch_name> <sample_name>"
+    echo "Usage: sbatch --array=1-N%M $0 <batch_name> <sample_list>"
     exit 1
 fi
 
 batch=$1
-sample=$2
+sample_list=$2
 
-echo "Running script for sample $sample in $batch."
+# Get sample name based on array index
+sample=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$sample_list")
+
+echo "Running script for sample $sample in $batch (Array index: $SLURM_ARRAY_TASK_ID)."
 
 base=/proj/uppmax2025-2-380/project_work
 
@@ -34,8 +37,6 @@ module load Miniconda3/24.7.1-0
 source activate "${base}/environments/conda_envs/krakenuniq"
 echo "KrakenUniq loaded."
 
-# Path to source DB
-db_src=/proj/uppmax2025-2-380/private/DATA/DBDIR_KrakenUniq_MicrobialNT_Plus_CompleteGenomes
 
 # Check that input FASTQ exists
 input_fastq="${base}/data/01_host_removal/${batch}/host_removed/${sample}_unaligned_to_hg38.fastq.gz"
@@ -44,12 +45,16 @@ if [ ! -f "$input_fastq" ]; then
     exit 1
 fi
 
+# Path to source DB
+db_src=/proj/uppmax2025-2-380/private/DATA/DBDIR_KrakenUniq_MicrobialNT_Plus_CompleteGenomes
 db_local="$SNIC_TMP/krakenuniq_db"
 
 echo "Copying KrakenUniq database to job-local scratch..."
 echo "Time: $(date)"
 rm -rf "$db_local"  # ensure clean copy
-cp -rL "$db_src" "$db_local"
+rsync -a --whole-file --no-compress \
+      --info=progress2 --stats --human-readable \
+      "$db_src/" "$db_local/"
 sync
 echo "Database copy completed. Time: $(date)"
 

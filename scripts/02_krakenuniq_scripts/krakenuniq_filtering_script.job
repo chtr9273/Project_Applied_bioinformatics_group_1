@@ -8,12 +8,20 @@
 #SBATCH -o /proj/uppmax2025-2-380/project_work/logs/02_krakenuniq_logs/%j.out
 #SBATCH -e /proj/uppmax2025-2-380/project_work/logs/02_krakenuniq_logs/%j.err
 
+# Check command-line arguments
+if [ $# -ne 2 ]; then
+    echo "Usage: sbatch $0 <batch_name> <unfiltered_directory>"
+    exit 1
+fi
+
+batch=$1
+input_dir=$2
+
 module load Python/3.13.1-GCCcore-14.2.0
 module load SciPy-bundle/2024.05-gfbf-2024a
 
 base=/proj/uppmax2025-2-380/project_work
-input_dir=${base}/data/02_krakenuniq/unfiltered_krakenuniq_output
-outdir=${base}/data/02_krakenuniq/filtered_krakenuniq_output
+outdir=${base}/data/02_krakenuniq/${batch}/filtered_krakenuniq_output
 
 script=${base}/scripts/02_krakenuniq_scripts/filter_krakenuniq.py
 pathogen_list=${base}/resources/krakenuniq_resources/pathogenomesFound.tab
