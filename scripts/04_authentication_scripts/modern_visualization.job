@@ -1,0 +1,85 @@
+#!/bin/bash -l
+#!/bin/bash
+#SBATCH -A uppmax2025-2-380
+#SBATCH -M pelle
+#SBATCH -p pelle
+#SBATCH -n 2
+#SBATCH -t 01:00:00
+#SBATCH -J modern_visualization
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user christos.tricopoulos.9273@student.uu.se
+#SBATCH -o /proj/uppmax2025-2-380/project_work/logs/04_authentication_logs/%x.%j.out
+#SBATCH -e /proj/uppmax2025-2-380/project_work/logs/04_authentication_logs/%x.%j.err
+
+# Load required modules
+module load R/4.4.2-gfbf-2024a
+module load R-bundle-CRAN/2024.11-foss-2024a
+module load R-bundle-Bioconductor/3.20-foss-2024a-R-4.4.2
+module load SAMtools/1.22-GCC-13.3.0 
+
+# Base project directory
+base="/proj/uppmax2025-2-380/project_work"
+
+# Directory with your R scripts
+script_dir="$base/scripts/04_authentication_scripts"
+
+# Root directory for modern_visualization outputs
+modern_dir="$base/test_data/04_authentication/modern_visualization"
+mkdir -p "$modern_dir"
+
+# Log file for missing BAMs inside modern_visualization
+missing_bam_log="$modern_dir/00_missing_bam.txt"
+> "$missing_bam_log"   # clear previous content
+
+# Loop over all .depth.txt files
+for sample in "$base"/test_data/04_authentication/coverage/*/*.depth.txt; do
+
+    # Extract sample name without extension
+    base_name=$(basename "$sample" .depth.txt)
+
+    # Create output directory for this sample
+    output_dir="$modern_dir/$base_name"
+    mkdir -p "$output_dir"
+
+    echo "Processing sample: $base_name"
+
+    # BOC plot
+    Rscript "$script_dir/boc_plot_cmd.R" \
+        "$sample" \
+        "$output_dir/${base_name}_boc_plot.png"
+
+    # Find corresponding BAM file (first match)
+    bam_file=( "$base"/test_data/03_bowtie2/*/"$base_name".bam )
+    
+
+    # If BAM is missing, log it and skip this sample
+    if [[ ! -f "$bam_file" ]]; then
+        echo "$base_name" >> "$missing_bam_log"
+        echo "Warning: BAM file not found for $base_name, skipping sample."
+        continue
+    fi
+
+    # MAPQ extraction
+    samtools view "$bam_file" | cut -f5 > "$SNIC_TMP/${base_name}_mapq.txt"
+
+    # MAPQ plot
+    Rscript "$script_dir/mapq_plot_cmd.R" \
+        "$SNIC_TMP/${base_name}_mapq.txt" \
+        "$output_dir/${base_name}_mapq_plot.png"
+
+    # Edit distance plot
+    Rscript "$script_dir/edit_distance_plot_cmd.R" \
+        "$bam_file" \
+        "$output_dir/${base_name}_edit_distance_plot.png"
+
+    # Percent identity plot
+    Rscript "$script_dir/percent_identity_cmd.R" \
+        "$bam_file" \
+        "$output_dir/${base_name}_percent_identity_plot.png"
+
+    echo "Finished sample: $base_name"
+
+done
+
+echo "All samples processed."
+echo "Samples missing BAM (if any) listed in $missing_bam_log"
