@@ -2,7 +2,8 @@
 #SBATCH -A uppmax2025-2-380
 #SBATCH -M pelle
 #SBATCH -p pelle
-#SBATCH -n 8
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=12
 #SBATCH -t 12:00:00
 #SBATCH -J remove_host_dna
 #SBATCH -o /proj/uppmax2025-2-380/project_work/logs/01_host_removal_logs/%j.out
@@ -33,13 +34,13 @@ sample_base=${sample%.fastq.gz}
 echo "Performing host removal for sample: ${sample} at $(date) on node $(hostname)."
 
 input=${base}/data/00_raw_data/${batch}/${sample}
-out_fastq=${base}/data/01_host_removal/${sample_base}_unaligned_to_hg38.fastq.gz
-stats_file=${base}/data/01_host_removal/${sample_base}_host_alignment_stats.txt
+out_fastq=${base}/data/01_host_removal/${batch}/${sample_base}_unaligned_to_hg38.fastq.gz
+stats_file=${base}/data/01_host_removal/${batch}/${sample_base}_host_alignment_stats.txt
 
 #  Bowtie2 → samtools filter unaligned (-f 4) → FASTQ → pigz. Returns only fastq.gz-files.
 #  Saves alignment stats in the file _host_alignment_stats.txt (% mapped etc)
 bowtie2 --large-index -x ${human_ref} \
-    --end-to-end --very-sensitive --threads 8 \
+    --end-to-end --very-sensitive --threads 12 \
     -U ${input} \
 | tee >(samtools view -b -f 4 -@ 2 - \
 	| samtools fastq -@ 2 - \
