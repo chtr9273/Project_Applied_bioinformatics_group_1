@@ -1,0 +1,127 @@
+#!/bin/bash -l
+#SBATCH -A uppmax2025-2-380
+#SBATCH -M pelle
+#SBATCH -p pelle
+#SBATCH -n 16
+#SBATCH -t 03:00:00
+#SBATCH -J fetcth_reference_genomes
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user christos.tricopoulos.9273@student.uu.se
+#SBATCH -o /proj/uppmax2025-2-380/project_work/logs/03_bowtie2_logs/fetch_reference_logs/%x.%j.out
+#SBATCH -e /proj/uppmax2025-2-380/project_work/logs/03_bowtie2_logs/fetch_reference_logs/%x.%j.err
+
+module load Bowtie2
+module load seqtk
+
+
+#Base directories
+BASE_DIR="/proj/uppmax2025-2-380/project_work"
+
+#Tracking files location
+REF_DIR="${BASE_DIR}/resources/references"
+mkdir -p "$REF_DIR"
+
+#Genome directories for each reference will be located here
+DB_DIR="${REF_DIR}/reference_db"
+mkdir -p "$DB_DIR"
+
+#Input and tracking files
+INPUT_FILE="${BASE_DIR}/scripts/03_bowtie2_scripts/import_multiple_references.txt"
+
+TRACK_FILE="${REF_DIR}/Database_inclusions.txt"
+LENGTH_FILE="${REF_DIR}/Genome_lengths.txt"
+ERROR_FILE="${REF_DIR}/download_errors.txt"
+
+#Create tracking files if missing
+[ ! -e "$TRACK_FILE" ] && touch "$TRACK_FILE"
+[ ! -e "$LENGTH_FILE" ] && touch "$LENGTH_FILE"
+[ ! -e "$ERROR_FILE" ] && touch "$ERROR_FILE"
+
+
+
+#loop through the input file and avoid the header
+tail -n +2 "$INPUT_FILE" | while IFS=$'\t' read -r Name Tax_ID ID chr_ID; do
+
+    #Skip empty lines
+    [ -z "$Name" ] && continue
+
+    #name for the output directory of each genome
+    database_name="$Tax_ID"
+
+    echo "Processing genome: $Name ($ID)"
+
+    #Check if the genome has already been added
+    if grep -q -E "^${Name}[[:space:]]+${Tax_ID}[[:space:]]+${ID}[[:space:]]+${chr_ID}[[:space:]]*" "$TRACK_FILE"; then
+        echo "Genome $Name + main chromosome already imported. Skipping."
+        echo
+        continue
+    fi
+
+    
+    #create genome directory if it does not exist
+    GENOME_DIR="${DB_DIR}/${database_name}"
+    mkdir -p "$GENOME_DIR"
+    cd "$GENOME_DIR" || { echo "Failed to enter folder $GENOME_DIR"; exit 1; }
+
+    #Build NCBI FTP path
+    NCBI="https://ftp.ncbi.nlm.nih.gov/genomes/all"
+
+    ACCESSION=$(echo "$ID" | cut -d'_' -f1-2)
+    PREFIX=$(echo "$ACCESSION" | cut -d'_' -f1)
+    CORE=$(echo "$ACCESSION" | cut -d'_' -f2 | cut -d'.' -f1)
+
+    FTP_PATH="${PREFIX}/${CORE:0:3}/${CORE:3:3}/${CORE:6:3}/${ID}"
+
+    echo "NCBI path resolved as:"
+    echo "${NCBI}/${FTP_PATH}/"
+    echo
+
+    if ! wget "${NCBI}/${FTP_PATH}/${ID}_genomic.fna.gz"; then
+        echo "ERROR: Could not download genome file."
+        echo -e "$(date '+%Y-%m-%d %H:%M:%S')\t$Name\t$Tax_ID\t$ID\tDownload_failed" >> "$ERROR_FILE"
+        cd "$DB_DIR" || exit 1
+        rm -rf "$GENOME_DIR"  # Remove empty genome folder
+        echo "Removed empty folder $GENOME_DIR due to download failure."
+        echo
+        continue
+    fi
+
+    #Unzip
+    gunzip "${ID}_genomic.fna.gz"
+
+    # keep chromosome of interest
+    echo "$chr_ID" > region.bed
+    seqtk subseq "${ID}_genomic.fna" region.bed > "${database_name}.fasta"
+
+    #remove temporary files
+    rm -f region.bed "${ID}_genomic.fna"
+
+    #Check FASTA integrity
+    if [ ! -s "${database_name}.fasta" ]; then
+        echo "ERROR: Extracted FASTA is empty. Exiting."
+        exit 1
+    fi
+
+    #Bowtie2 indexing
+    bowtie2-build --large-index "${database_name}.fasta" "${database_name}" --threads 16 || { 
+        echo "ERROR: Bowtie2 index building failed"
+        exit 1
+    }
+
+    
+    #Register genome length
+    GENOME_LENGTH=$(grep -v '^>' "${database_name}.fasta" | tr -d '\n' | wc -c)
+    echo -e "${Name}\t${Tax_ID}\t${ID}\t${chr_ID}\t${GENOME_LENGTH}" >> "$LENGTH_FILE"
+
+
+    #Update inclusion tracking file
+    echo -e "${Name}\t${Tax_ID}\t${ID}\t${chr_ID}" >> "$TRACK_FILE"
+
+    
+    # Final message
+    echo "Done! All necessary files for $Name are in:"
+    echo "  $GENOME_DIR"
+    echo "Genome length (bp): $GENOME_LENGTH"
+    echo
+
+done < "$INPUT_FILE"
