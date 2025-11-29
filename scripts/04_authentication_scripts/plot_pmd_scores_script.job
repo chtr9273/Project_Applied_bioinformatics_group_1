@@ -8,11 +8,16 @@
 #SBATCH -o /proj/uppmax2025-2-380/project_work/logs/04_authentication_logs/%x.%j.out
 #SBATCH -e /proj/uppmax2025-2-380/project_work/logs/04_authentication_logs/%x.%j.err
 
+# Start time
+START_TIME=$(date +%s)
+
 # Load R module
 module load R/4.5.1-gfbf-2024a
 
 # Set base directory
 BASE_DIR="/proj/uppmax2025-2-380/project_work/test_data/04_authentication/pmdtools"
+
+echo "PMD score plotting started at: $(date)"
 
 # Loop through all sample directories
 for SAMPLE_DIR in ${BASE_DIR}/*; do
@@ -53,3 +58,16 @@ for SAMPLE_DIR in ${BASE_DIR}/*; do
 done
 
 echo "All histograms generated successfully!"
+
+echo "PMD score plotting completed at: $(date)"
+
+# Capture end time and calculate duration
+END_TIME=$(date +%s)
+ELAPSED=$((END_TIME - START_TIME))
+
+# Convert to hh:mm:ss format
+HOURS=$((ELAPSED / 3600))
+MINUTES=$(((ELAPSED % 3600) / 60))
+SECONDS=$((ELAPSED % 60))
+
+printf "Total runtime: %02d:%02d:%02d\n" $HOURS $MINUTES $SECONDS
