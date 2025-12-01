@@ -17,12 +17,12 @@ module load mapDamage/2.2.3-gfbf-2024a
 
 # Pathways
 BASE=/proj/uppmax2025-2-380/project_work
-DBDIR=$BASE/resources/references/reference_db/references
+DBDIR=$BASE/resources/references/reference_db/632
 
-PATHOGENS_DIR=$BASE/data/02_krakenuniq/batch1/filtered_krakenuniq_output
+PATHOGENS_DIR=$BASE/test_data/02_krakenuniq/filtered_krakenuniq_output
 
-BAMDIR=$BASE/data/03_bowtie2/batch1
-OUTBASE=$BASE/data/04_authentication/batch1/mapdamage
+BAMDIR=$BASE/test_data/03_bowtie2_presentation
+OUTBASE=$BASE/test_data/04_authentication/mapdamage_presentation
 mkdir -p "$OUTBASE"
 
 echo "MapDamage analysis started at: $(date)"
@@ -52,7 +52,7 @@ for SAMPLE_DIR in "$BAMDIR"/*; do
         echo "  Processing taxID: $TAXID"
         
         # Find corresponding reference genome
-        REF_FASTA="$DBDIR/${TAXID}.genomic.fna"
+        REF_FASTA="$DBDIR/${TAXID}.fasta"
         if [[ ! -s "$REF_FASTA" ]]; then
             echo "  No reference FASTA for taxID $TAXID — skipping"
             continue

@@ -15,7 +15,7 @@ START_TIME=$(date +%s)
 module load R/4.5.1-gfbf-2024a
 
 # Set base directory
-BASE_DIR="/proj/uppmax2025-2-380/project_work/test_data/04_authentication/pmdtools"
+BASE_DIR="/proj/uppmax2025-2-380/project_work/test_data/04_authentication/pmdtools_presentation"
 
 echo "PMD score plotting started at: $(date)"
 
