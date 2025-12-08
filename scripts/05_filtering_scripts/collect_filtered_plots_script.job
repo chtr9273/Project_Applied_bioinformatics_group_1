@@ -1,0 +1,182 @@
+#!/bin/bash
+#SBATCH -A uppmax2025-2-380
+#SBATCH -M pelle
+#SBATCH -p pelle
+#SBATCH -n 1
+#SBATCH -t 01:00:00
+#SBATCH -J collect_filtered_plots
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user agnes.niemi.0310@student.uu.se
+#SBATCH -o /proj/uppmax2025-2-380/project_work/logs/05_filter_logs/%x.%j.out
+#SBATCH -e /proj/uppmax2025-2-380/project_work/logs/05_filter_logs/%x.%j.err
+
+# Start timer
+START_TIME=$(date +%s)
+
+# Load ImageMagick
+module load ImageMagick/7.1.1-38-GCCcore-13.3.0
+
+# Paths
+BASE=/proj/uppmax2025-2-380/project_work
+AUTH_DIR=$BASE/data/04_authentication
+OUTPUT_BASE=$BASE/data/05_filtered_summarized
+mkdir -p "$OUTPUT_BASE"
+
+# Batches
+BATCHES=("batch4")
+
+# Process each batch
+for BATCH in "${BATCHES[@]}"; do
+    echo "Processing $BATCH..."
+    
+    FILTERED_FILE="$AUTH_DIR/$BATCH/mapdamage_filtered/deamination_summary_passed_+_species_filter.txt"
+    
+    if [[ ! -f "$FILTERED_FILE" ]]; then
+        echo "  WARNING: Filtered file not found: $FILTERED_FILE"
+        continue
+    fi
+
+    BATCH_OUTPUT="$OUTPUT_BASE/$BATCH"
+    mkdir -p "$BATCH_OUTPUT"
+
+    # ----------------------------
+    # Read filtered file
+    # ----------------------------
+    while IFS=$'\t' read -r sample taxid deam5p deam3p species; do
+        [[ "$sample" == "Sample" ]] && continue
+        [[ -z "$sample" ]] && continue
+
+        echo "  Processing: $sample - $species (TaxID: $taxid)"
+
+        # Clean TaxID
+        taxid_clean=$(echo "$taxid" | sed 's/_[0-9]*$//')
+
+        # Create folder for this sample/species
+        SAMPLE_OUTPUT="$BATCH_OUTPUT/$sample/$species"
+        mkdir -p "$SAMPLE_OUTPUT"
+
+        # Arrays
+        ANCIENT_PLOTS=()  # For collage
+        ALL_PLOTS=()      # All plots in this folder
+
+        # ----------------------------
+        # ANCIENT PLOTS
+        # ----------------------------
+
+        # Fragmisincorporation
+        FRAG_PDF="$AUTH_DIR/$BATCH/mapdamage/$sample/$taxid_clean/Fragmisincorporation_plot.pdf"
+        FRAG_PNG="$SAMPLE_OUTPUT/fragmisincorporation_plot.png"
+        FRAG_CUT="$SAMPLE_OUTPUT/deamination_plot.png"
+        if [[ -f "$FRAG_PDF" ]]; then
+            magick -density 600 "$FRAG_PDF" -background white -alpha remove "$FRAG_PNG" 2>/dev/null
+            if [[ -f "$FRAG_PNG" ]]; then
+                magick "$FRAG_PNG" -gravity North -chop x2800 "$FRAG_CUT" 2>/dev/null
+                if [[ -f "$FRAG_CUT" ]]; then
+                    ANCIENT_PLOTS+=("$FRAG_CUT")
+                    ALL_PLOTS+=("$FRAG_CUT")
+                fi
+            fi
+        fi
+
+        # Length plot
+        LENGTH_PDF="$AUTH_DIR/$BATCH/mapdamage/$sample/$taxid_clean/Length_plot.pdf"
+        LENGTH_PNG="$SAMPLE_OUTPUT/length_plot.png"
+        LENGTH_CUT="$SAMPLE_OUTPUT/length_plot_cut.png"
+        if [[ -f "$LENGTH_PDF" ]]; then
+            magick -density 600 "$LENGTH_PDF" -background white -alpha remove "$LENGTH_PNG" 2>/dev/null
+            if [[ -f "$LENGTH_PNG" ]]; then
+                magick "$LENGTH_PNG" -gravity North -chop x300 -gravity South -chop x1500 "$LENGTH_CUT" 2>/dev/null
+                if [[ -f "$LENGTH_CUT" ]]; then
+                    ANCIENT_PLOTS+=("$LENGTH_CUT")
+                    ALL_PLOTS+=("$LENGTH_CUT")
+                fi
+            fi
+        fi
+
+        # PMD histogram
+        PMD_HIST="$AUTH_DIR/$BATCH/pmdtools/$sample/$taxid_clean/histogram.pdf"
+        PMD_PNG="$SAMPLE_OUTPUT/pmd_histogram.png"
+        PMD_CUT="$SAMPLE_OUTPUT/pmd_histogram_cut.png"
+        if [[ -f "$PMD_HIST" ]]; then
+            magick -density 600 "$PMD_HIST" -background white -alpha remove "$PMD_PNG" 2>/dev/null
+            if [[ -f "$PMD_PNG" ]]; then
+                magick "$PMD_PNG" -gravity South -chop x200 "$PMD_CUT" 2>/dev/null
+                if [[ -f "$PMD_CUT" ]]; then
+                    ANCIENT_PLOTS+=("$PMD_CUT")
+                    ALL_PLOTS+=("$PMD_CUT")
+                fi
+            fi
+        fi
+
+        # ----------------------------
+        # MODERN PLOTS (symlinks)
+        # ----------------------------
+        MODERN_DIR="$AUTH_DIR/$BATCH/modern_authentication/$sample/${sample}.${taxid_clean}"
+        for PLOT in "$MODERN_DIR"/*; do
+            if [[ -f "$PLOT" ]]; then
+                ln -s "$PLOT" "$SAMPLE_OUTPUT/"
+                ALL_PLOTS+=("$SAMPLE_OUTPUT/$(basename "$PLOT")")
+            fi
+        done
+
+        # ----------------------------
+        # COLLAGE of ancient plots
+        # ----------------------------
+
+        # Paths to the three ancient plots
+        DEAM_PLOT="$FRAG_CUT"
+        LENGTH_PLOT="$LENGTH_CUT"
+        PMD_PLOT="$PMD_CUT"
+        COLLAGE_FILE="$SAMPLE_OUTPUT/ancient_summary.png"
+
+        # Check that all files exist
+        if [[ -f "$DEAM_PLOT" && -f "$LENGTH_PLOT" && -f "$PMD_PLOT" ]]; then
+            # column 1 = Length / label / Deamination
+            # Create deamination label
+            magick \
+                -background white -fill black -pointsize 100 \
+                -gravity center \
+                label:"Deamination Pattern" \
+                "$SAMPLE_OUTPUT/_label_deam.png"
+
+            # Left column 
+            magick convert \
+                "$LENGTH_PLOT" \
+                "$SAMPLE_OUTPUT/_label_deam.png" \
+                "$DEAM_PLOT" \
+                -append "$SAMPLE_OUTPUT/_temp_col1.png"
+
+            # Right column
+            magick convert \
+                "$SAMPLE_OUTPUT/_temp_col1.png" \
+                "$PMD_PLOT" \
+                +append "$COLLAGE_FILE"
+
+            rm "$SAMPLE_OUTPUT/_temp_col1.png"
+            rm "$SAMPLE_OUTPUT/_label_deam.png"
+
+            # Add main title
+            TITLE="${species} (${taxid}) in sample ${sample}"
+            magick convert "$COLLAGE_FILE" \
+                -font Droid-Sans-Bold \
+                -gravity North \
+                -splice 0x160 \
+                -resize 100% \
+                -pointsize 200 \
+                -annotate +0+40 "$TITLE" \
+                "$COLLAGE_FILE"
+        fi
+
+            done < "$FILTERED_FILE"
+
+        done
+
+
+
+# End timer
+END_TIME=$(date +%s)
+ELAPSED=$((END_TIME - START_TIME))
+HOURS=$((ELAPSED / 3600))
+MINUTES=$(((ELAPSED % 3600) / 60))
+SECONDS=$((ELAPSED % 60))
+printf "Total runtime: %02d:%02d:%02d\n" $HOURS $MINUTES $SECONDS
