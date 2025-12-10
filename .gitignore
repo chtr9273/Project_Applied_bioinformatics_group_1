@@ -1,6 +1,11 @@
-data/
+data/00_raw_data/*
+data/01_host_removal/*
+data/02_krakenuniq/*
+data/03_bowtie2/*
+data/04_authentication/*
+data/05_filtered_summarized/*
 docs/
 environments/
-logs/
-resources/
+logs/*
+resources/*
 test_data/
