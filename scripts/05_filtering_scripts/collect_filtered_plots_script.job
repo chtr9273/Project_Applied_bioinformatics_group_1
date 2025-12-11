@@ -2,8 +2,8 @@
 #SBATCH -A uppmax2025-2-380
 #SBATCH -M pelle
 #SBATCH -p pelle
-#SBATCH -n 1
-#SBATCH -t 01:00:00
+#SBATCH -n 2
+#SBATCH -t 02:00:00
 #SBATCH -J collect_filtered_plots
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user agnes.niemi.0310@student.uu.se
@@ -131,47 +131,63 @@ for BATCH in "${BATCHES[@]}"; do
 
         # Check that all files exist
         if [[ -f "$DEAM_PLOT" && -f "$LENGTH_PLOT" && -f "$PMD_PLOT" ]]; then
-            # column 1 = Length / label / Deamination
-            # Create deamination label
+            # Get the width of the deamination plot to match label width
+            DEAM_WIDTH=$(magick identify -format "%w" "$DEAM_PLOT")
+            
+            # Create deamination label  
             magick \
-                -background white -fill black -pointsize 100 \
+                -size ${DEAM_WIDTH}x200 \
+                -font Droid-Sans-Bold \
+                -background white -fill black \
+                -pointsize 120 \
                 -gravity center \
                 label:"Deamination Pattern" \
                 "$SAMPLE_OUTPUT/_label_deam.png"
 
-            # Left column 
-            magick convert \
+            # Left column: Length / label / Deamination
+            magick \
                 "$LENGTH_PLOT" \
                 "$SAMPLE_OUTPUT/_label_deam.png" \
                 "$DEAM_PLOT" \
                 -append "$SAMPLE_OUTPUT/_temp_col1.png"
 
-            # Right column
-            magick convert \
+            # Combine columns: Left + Right (PMD)
+            magick \
                 "$SAMPLE_OUTPUT/_temp_col1.png" \
                 "$PMD_PLOT" \
-                +append "$COLLAGE_FILE"
+                +append "$SAMPLE_OUTPUT/_temp_collage.png"
 
-            rm "$SAMPLE_OUTPUT/_temp_col1.png"
-            rm "$SAMPLE_OUTPUT/_label_deam.png"
-
-            # Add main title
+            # Get width of final collage for proper title centering
+            COLLAGE_WIDTH=$(magick identify -format "%w" "$SAMPLE_OUTPUT/_temp_collage.png")
+            
+            # Create title with full collage width
             TITLE="${species} (${taxid}) in sample ${sample}"
-            magick convert "$COLLAGE_FILE" \
+            magick \
+                -size ${COLLAGE_WIDTH}x250 \
+                -background white -fill black \
                 -font Droid-Sans-Bold \
-                -gravity North \
-                -splice 0x160 \
-                -resize 100% \
-                -pointsize 200 \
-                -annotate +0+40 "$TITLE" \
-                "$COLLAGE_FILE"
+                -pointsize 140 \
+                -gravity center \
+                label:"$TITLE" \
+                "$SAMPLE_OUTPUT/_title.png"
+
+            # Combine title + collage
+            magick \
+                "$SAMPLE_OUTPUT/_title.png" \
+                "$SAMPLE_OUTPUT/_temp_collage.png" \
+                -append "$COLLAGE_FILE"
+
+            # Clean up temp files
+            rm "$SAMPLE_OUTPUT/_temp_col1.png"
+            rm "$SAMPLE_OUTPUT/_temp_collage.png"
+            rm "$SAMPLE_OUTPUT/_label_deam.png"
+            rm "$SAMPLE_OUTPUT/_title.png"
+            rm "$SAMPLE_OUTPUT/pmd_histogram_cut.png"
         fi
 
-            done < "$FILTERED_FILE"
+    done < "$FILTERED_FILE"
 
-        done
-
-
+done
 
 # End timer
 END_TIME=$(date +%s)
