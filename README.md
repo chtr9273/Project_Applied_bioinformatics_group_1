@@ -1,5 +1,5 @@
 ## Pathogen Detectives: Uncovering Hidden Microbes in ancient DNA 
-### a Project in Applied Bioinformatics 
+### Project in Applied Bioinformatics 
 
 The code provided here constitute a methodical pipeline to discover potential pathogens in ancient DNA. 
 The workflow assumes preprocessed (trimmed and high quality) reads in FASTQ format. Initially, clone this repository into UPPMAX 
@@ -85,7 +85,7 @@ scripts \
   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ├── mapdamage_filter_script.job \
   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; └── species_filter_script.job 
 
-## A typical workflow
+## Typical workflow
 
 ### 01 Host removal
 Describe how to run the host removal
@@ -97,7 +97,7 @@ Describe how to run kraken
 Describe how to run bowtie2
 
 ### 04 Authentication
-While the previous steps required a sequential execution, the modern and ancient authentication can be run in parallel. 
+While the previous steps required sequential execution, the modern and ancient authentication can be run in parallel. 
 
 #### 04.1 Modern authentication
 Describe how to run modern auth
