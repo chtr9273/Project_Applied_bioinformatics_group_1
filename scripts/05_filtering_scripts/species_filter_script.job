@@ -1,0 +1,134 @@
+#!/bin/bash
+#SBATCH -A uppmax2025-2-380
+#SBATCH -M pelle
+#SBATCH -p pelle
+#SBATCH -n 1
+#SBATCH -t 01:00:00
+#SBATCH -J filter_pathogens_list
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user agnes.niemi.0310@student.uu.se
+#SBATCH -o /proj/uppmax2025-2-380/project_work/logs/05_filter_logs/%x.%j.out
+#SBATCH -e /proj/uppmax2025-2-380/project_work/logs/05_filter_logs/%x.%j.err
+
+# Start time
+START_TIME=$(date +%s)
+
+# Batch (change this depending on which batch is to be processed)
+BATCH="batch6"
+
+# Pathways
+BASE=/proj/uppmax2025-2-380/project_work
+RESOURCES=$BASE/resources
+DEAM_DIR=$BASE/data/04_authentication/"$BATCH"/mapdamage_filtered
+
+# Input files
+PATHOGEN_LIST=$RESOURCES/pathogens_list.tsv
+TAXID_MAP=$RESOURCES/taxids_after_filtering/"$BATCH"_taxids.txt
+INPUT_FILE=$DEAM_DIR/deamination_summary_passed.txt
+OUTPUT_FILE=$DEAM_DIR/deamination_summary_passed_+_species_filter.txt
+
+echo "Pathogen filtering started at: $(date)"
+echo "Processing batch: $BATCH"
+echo ""
+echo "Input files:"
+echo "  Pathogen list: $PATHOGEN_LIST"
+echo "  TaxID mapping: $TAXID_MAP"
+echo "  Deamination summary: $INPUT_FILE"
+echo "  Output file: $OUTPUT_FILE"
+echo ""
+
+# Check if input files exist
+for file in "$PATHOGEN_LIST" "$TAXID_MAP" "$INPUT_FILE"; do
+    if [[ ! -f "$file" ]]; then
+        echo "ERROR: File not found: $file"
+        exit 1
+    fi
+done
+
+echo "Creating pathogen species lookup..."
+# Extract pathogen species names from pathogens_list.tsv
+PATHOGEN_SPECIES=$(
+    awk -F'\t' '$4 == "pathogen" {print $3}' "$PATHOGEN_LIST" \
+    | tr ' ' '_' | sort -u
+)
+PATHOGEN_COUNT=$(echo "$PATHOGEN_SPECIES" | wc -l)
+echo "Found $PATHOGEN_COUNT pathogen species"
+echo ""
+
+echo "Creating TaxID to species mapping..."
+# Create associative array for TaxID to species name mapping
+declare -A TAXID_TO_SPECIES
+
+while IFS=$'\t' read -r taxid species_name; do
+    # Replace spaces with underscores in species name
+    [[ -z "$taxid" ]] && continue
+    species_clean=$(echo "$species_name" | tr ' ' '_')
+    TAXID_TO_SPECIES["$taxid"]="$species_clean"
+done < "$TAXID_MAP"
+
+TAXID_MAP_COUNT=${#TAXID_TO_SPECIES[@]}
+echo "Loaded $TAXID_MAP_COUNT TaxID mappings"
+echo ""
+
+echo "Filtering deamination summary based on given list..."
+
+# Write updated header (add species column)
+header=$(head -n 1 "$INPUT_FILE")
+echo -e "${header}\tspecies" > "$OUTPUT_FILE"
+
+# Statistics counters
+TOTAL=0
+RETAINED=0
+REMOVED=0
+
+# Process each line (skip header)
+while IFS=$'\t' read -r sample taxid deam5p deam3p rest; do
+    ((TOTAL++))
+
+    # Clean TaxID
+    taxid_clean=$(echo "$taxid" | sed 's/_[0-9]*$//')
+
+    # Map TaxID to species
+    species_name="${TAXID_TO_SPECIES[$taxid_clean]}"
+
+    if [[ -z "$species_name" ]]; then
+        echo "  [WARNING] No species mapping found for TaxID: $taxid (cleaned: $taxid_clean)"
+        ((REMOVED++))
+        continue
+    fi
+
+    # Check if species is a pathogen
+    if echo "$PATHOGEN_SPECIES" | grep -q "^${species_name}$"; then
+        echo "  [RETAIN] $sample - TaxID: $taxid ($species_name) - FOUND"
+        echo -e "$sample\t$taxid\t$deam5p\t$deam3p\t$species_name" >> "$OUTPUT_FILE"
+        ((RETAINED++))
+    else
+        echo "  [REMOVE] $sample - TaxID: $taxid ($species_name) - NOT FOUND IN LIST"
+        ((REMOVED++))
+    fi
+
+done < <(tail -n +2 "$INPUT_FILE")
+
+echo ""
+echo "======================================"
+echo "Filtering complete!"
+echo "Total entries processed: $TOTAL"
+echo "Pathogen entries retained: $RETAINED"
+echo "Entries removed: $REMOVED"
+echo "======================================"
+echo ""
+echo "Output written to: $OUTPUT_FILE"
+echo ""
+echo "Pathogen filtering completed at: $(date)"
+echo ""
+
+# Capture end time and calculate duration
+END_TIME=$(date +%s)
+ELAPSED=$((END_TIME - START_TIME))
+
+# Convert to hh:mm:ss format
+HOURS=$((ELAPSED / 3600))
+MINUTES=$(((ELAPSED % 3600) / 60))
+SECONDS=$((ELAPSED % 60))
+
+printf "Total runtime: %02d:%02d:%02d\n" $HOURS $MINUTES $SECONDS
