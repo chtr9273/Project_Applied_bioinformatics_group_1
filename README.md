@@ -3,7 +3,7 @@
 
 The code provided here constitute a methodical pipeline to discover potential pathogens in ancient DNA. 
 The workflow assumes preprocessed (trimmed and high quality) reads in FASTQ format. Initially, clone this repository into UPPMAX 
-or other SLURM-compatible high-performance cluster (will however need adjustments to slurm parameters and module loading), ensuring the proper folder structure presented here:
+or other SLURM-compatible high-performance cluster (will however need adjustments to slurm parameters and module loading), and ensure the proper folder structure presented here:
 
 ├── data \
 │ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  ├── 00_raw_data \
@@ -32,7 +32,6 @@ or other SLURM-compatible high-performance cluster (will however need adjustment
 │ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  ├── 03_bowtie2_scripts \
 │ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  ├── 04_authentication_scripts \
 │ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  ├── 05_filtering_scripts \
-│ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;  └── old_scripts \
 └── test_data \
    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ├── 00_raw_data \
    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ├── 01_host_removal \
@@ -84,6 +83,8 @@ scripts \
   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ├── mapdamage_filter_script.job \
   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; └── species_filter_script.job 
 
+By following this structure, out of the specified pathways, only the base path needs to be adjusted in some scripts. 
+
 ## Typical workflow
 
 ### 01 Host removal
@@ -96,7 +97,8 @@ Describe how to run kraken
 Describe how to run bowtie2
 
 ### 04 Authentication
-While the previous steps required sequential execution, the modern and ancient authentication can be run in parallel. 
+While the previous steps required sequential execution, the modern and ancient authentication can be run in parallel since neither of their outputs 
+are required for the other one. 
 
 #### 04.1 Modern authentication
 Describe how to run modern auth
@@ -107,6 +109,9 @@ Describe how to run ancient auth
 ##### mapDamage
 
 ##### PMD scores
+
+### 05 Filtering
+
 
 
 
