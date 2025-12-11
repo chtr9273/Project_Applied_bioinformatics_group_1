@@ -1,0 +1,133 @@
+#!/bin/bash
+#SBATCH -A uppmax2025-2-380
+#SBATCH -M pelle
+#SBATCH -p pelle
+#SBATCH -n 1
+#SBATCH -t 01:00:00
+#SBATCH -J filter_deamination
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user agnes.niemi.0310@student.uu.se
+#SBATCH -o /proj/uppmax2025-2-380/project_work/logs/04_authentication_logs/%x.%j.out
+#SBATCH -e /proj/uppmax2025-2-380/project_work/logs/04_authentication_logs/%x.%j.err
+
+# Start time
+START_TIME=$(date +%s)
+
+# Batch (change this depending on which batch is to be processed)
+BATCH="batch6"
+
+# Pathways
+BASE=/proj/uppmax2025-2-380/project_work
+MAPDAMAGE_DIR=$BASE/data/04_authentication/"$BATCH"/mapdamage
+OUTDIR=$BASE/data/04_authentication/"$BATCH"/mapdamage_filtered
+mkdir -p "$OUTDIR"
+
+# Deamination threshold
+THRESHOLD=0.1
+
+echo "Deamination filtering started at: $(date)"
+echo "Threshold: ${THRESHOLD}"
+echo "Processing: $MAPDAMAGE_DIR"
+echo ""
+
+# Output summary files
+SUMMARY="$OUTDIR/deamination_summary.txt"
+SUMMARY_PASSED="$OUTDIR/deamination_summary_passed.txt"
+echo -e "Sample\tTaxID\t5pCtoT\t3pGtoA\tStatus" > "$SUMMARY"
+echo -e "Sample\tTaxID\t5pCtoT\t3pGtoA" > "$SUMMARY_PASSED"
+
+# Counter for statistics
+TOTAL=0
+PASSED=0
+FAILED=0
+
+# Loop through each sample directory
+for SAMPLE_DIR in "$MAPDAMAGE_DIR"/*; do
+    [[ ! -d "$SAMPLE_DIR" ]] && continue
+    
+    SAMPLE=$(basename "$SAMPLE_DIR")
+    echo "Processing sample: $SAMPLE"
+    
+    # Loop through each taxID subdirectory
+    for TAXID_DIR in "$SAMPLE_DIR"/*; do
+        [[ ! -d "$TAXID_DIR" ]] && continue
+        
+        TAXID=$(basename "$TAXID_DIR")
+        ((TOTAL++))
+        
+        # Check if required files exist
+        FILE_5P="$TAXID_DIR/5pCtoT_freq.txt"
+        FILE_3P="$TAXID_DIR/3pGtoA_freq.txt"
+        
+        if [[ ! -s "$FILE_5P" ]] || [[ ! -s "$FILE_3P" ]]; then
+            echo "  [SKIP] Missing deamination files for taxID: $TAXID"
+            echo -e "$SAMPLE\t$TAXID\tNA\tNA\tMISSING_FILES" >> "$SUMMARY"
+            ((FAILED++))
+            continue
+        fi
+        
+        # Extract first position deamination values (skip header, get line 1)
+        DEAM_5P=$(awk 'NR==2 {print $2}' "$FILE_5P")
+        DEAM_3P=$(awk 'NR==2 {print $2}' "$FILE_3P")
+        
+        # Check if values were extracted
+        if [[ -z "$DEAM_5P" ]] || [[ -z "$DEAM_3P" ]]; then
+            echo "  [SKIP] Could not extract deamination values for taxID: $TAXID"
+            echo -e "$SAMPLE\t$TAXID\tNA\tNA\tEXTRACT_ERROR" >> "$SUMMARY"
+            ((FAILED++))
+            continue
+        fi
+        
+        # Check if BOTH ends meet the threshold using awk for float comparison
+        PASS_5P=$(awk -v val="$DEAM_5P" -v thr="$THRESHOLD" 'BEGIN {print (val >= thr) ? 1 : 0}')
+        PASS_3P=$(awk -v val="$DEAM_3P" -v thr="$THRESHOLD" 'BEGIN {print (val >= thr) ? 1 : 0}')
+        
+        if [[ "$PASS_5P" -eq 1 ]] && [[ "$PASS_3P" -eq 1 ]]; then
+            echo "  [PASS] taxID $TAXID: 5pCtoT=$DEAM_5P, 3pGtoA=$DEAM_3P"
+            echo -e "$SAMPLE\t$TAXID\t$DEAM_5P\t$DEAM_3P\tPASS" >> "$SUMMARY"
+            echo -e "$SAMPLE\t$TAXID\t$DEAM_5P\t$DEAM_3P" >> "$SUMMARY_PASSED"
+            
+            # Create symlink to keep this taxID
+            OUTDIR_SAMPLE="$OUTDIR/$SAMPLE"
+            mkdir -p "$OUTDIR_SAMPLE"
+            
+            # Create symlink if it doesn't exist
+            if [[ ! -L "$OUTDIR_SAMPLE/$TAXID" ]]; then
+                ln -s "$TAXID_DIR" "$OUTDIR_SAMPLE/$TAXID"
+            fi
+            
+            ((PASSED++))
+        else
+            echo "  [FAIL] taxID $TAXID: 5pCtoT=$DEAM_5P, 3pGtoA=$DEAM_3P (below threshold)"
+            echo -e "$SAMPLE\t$TAXID\t$DEAM_5P\t$DEAM_3P\tFAIL" >> "$SUMMARY"
+            ((FAILED++))
+        fi
+        
+    done
+    
+done
+
+echo ""
+echo "======================================"
+echo "Filtering complete!"
+echo "Total samples/species processed: $TOTAL"
+echo "Passed (deamination ≥ $THRESHOLD): $PASSED"
+echo "Failed (deamination < $THRESHOLD): $FAILED"
+echo "======================================"
+echo ""
+echo "Summary written to: $SUMMARY"
+echo "Passed samples written to: $SUMMARY_PASSED"
+echo "Filtered results in: $OUTDIR"
+echo ""
+echo "Deamination filtering completed at: $(date)"
+
+# Capture end time and calculate duration
+END_TIME=$(date +%s)
+ELAPSED=$((END_TIME - START_TIME))
+
+# Convert to hh:mm:ss format
+HOURS=$((ELAPSED / 3600))
+MINUTES=$(((ELAPSED % 3600) / 60))
+SECONDS=$((ELAPSED % 60))
+
+printf "Total runtime: %02d:%02d:%02d\n" $HOURS $MINUTES $SECONDS
