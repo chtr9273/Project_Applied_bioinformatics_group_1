@@ -1,0 +1,40 @@
+# Summary: Extracts unique TaxIDs and species names from filtered KrakenUniq results.
+# Usage: sbatch collect_taxids.job <batch_name>
+# Input: Reads .pathogens files from the specified batch.
+# Output: A single TSV file with TaxID and Name for downstream reference building.
+
+#!/bin/bash
+#SBATCH -A uppmax2025-2-380
+#SBATCH -M pelle
+#SBATCH -p pelle
+#SBATCH -n 1
+#SBATCH -t 00:05:00
+#SBATCH -J collect_taxids
+#SBATCH -o /proj/uppmax2025-2-380/project_work/logs/03_bowtie2_logs/collect_taxids/collect_taxids_%j.out
+#SBATCH -e /proj/uppmax2025-2-380/project_work/logs/03_bowtie2_logs/collect_taxids/collect_taxids_%j.err
+
+# Check command-line arguments
+if [ $# -ne 1 ]; then
+    echo "Usage: sbatch $0 <batch_name>"
+    exit 1
+fi
+
+BATCH=$1
+
+INPUT_BASE="/proj/uppmax2025-2-380/project_work/data/02_krakenuniq"
+OUTPUT_BASE="/proj/uppmax2025-2-380/project_work/resources/taxids_after_filtering" 
+IN_DIR="$INPUT_BASE/$BATCH/filtered_krakenuniq_output"
+OUT_DIR="$OUTPUT_BASE" 
+OUTPUT_FILE="${BATCH}_taxids.txt" 
+mkdir -p "$OUT_DIR" 
+
+echo "Collecting taxIDs + taxNames for batch: $BATCH"
+echo "Input:  $IN_DIR"
+echo "Output: $OUT_DIR/$OUTPUT_FILE"
+
+# ---- Extract taxID (col7) and the full taxName ----
+# FNR>1 skips the header line for each file
+awk 'FNR>1 {print $7"\t"$(NF-1)" "$NF}' "$IN_DIR"/*.output.pathogens \
+    | sort -u > "$OUT_DIR/$OUTPUT_FILE"
+
+echo "Done! Created: $OUT_DIR/$OUTPUT_FILE"

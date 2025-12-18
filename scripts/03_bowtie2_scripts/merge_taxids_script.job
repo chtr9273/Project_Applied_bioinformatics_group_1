@@ -1,0 +1,89 @@
+# Combines multiple batch-specific TaxID lists into a single master list of unique organisms.
+# Usage: sbatch merge_taxids_script.job (processes all *_taxids.txt in the resources folder)
+# Compares new entries against the existing master list using the 'comm' command to identify additions.
+# Maintains a log file of newly discovered TaxIDs to track pipeline progress across different batches.
+
+#!/bin/bash
+#SBATCH -A uppmax2025-2-380
+#SBATCH -M pelle
+#SBATCH -p pelle
+#SBATCH -n 1
+#SBATCH -t 00:15:00
+#SBATCH -J merge_taxids
+#SBATCH -o /proj/uppmax2025-2-380/project_work/logs/03_bowtie2_logs/merge_taxids_log/%j.out
+#SBATCH -e /proj/uppmax2025-2-380/project_work/logs/03_bowtie2_logs/merge_taxids_log/%j.err
+
+set -euo pipefail
+
+# Pathway to folder where all taxIDs for each batch are located
+INPUT_DIR="/proj/uppmax2025-2-380/project_work/resources/taxids_after_filtering"
+
+# Filenames
+OUTPUT_FILE="merged_unique_taxids.txt"
+LOG_FILE="log_unique_taxids_added.txt"
+
+# Pathways
+OUTPUT_PATH="$INPUT_DIR/$OUTPUT_FILE"
+LOG_PATH="$INPUT_DIR/$LOG_FILE"
+
+# Temporary files
+TEMP_PREV=$(mktemp)
+TEMP_NEW_TOTAL=$(mktemp)
+
+echo "Starting simple taxID merge with logging of new entries."
+echo "Input directory: $INPUT_DIR"
+
+
+if ! ls "$INPUT_DIR"/*_taxids.txt 1> /dev/null 2>&1; then
+    echo "ERROR: No *_taxids.txt files found in $INPUT_DIR. Aborting."
+    exit 1
+fi
+
+# --- 1. Save previous list for comparison ---
+PREVIOUS_COUNT=0
+if [ -s "$OUTPUT_PATH" ]; then
+    PREVIOUS_COUNT=$(wc -l < "$OUTPUT_PATH")
+    sort "$OUTPUT_PATH" > "$TEMP_PREV"
+    echo "Found previous merge file with $PREVIOUS_COUNT TaxIDs. Preparing for comparison."
+else
+    echo "No previous merge file found. Creating empty comparison file."
+    touch "$TEMP_PREV"
+fi
+
+# --- 2. Create the new, complete, unique, and sorted list ---
+cat "$INPUT_DIR"/*_taxids.txt \
+    | sort -u > "$TEMP_NEW_TOTAL"
+
+# --- 3. Identify the new unique additions---
+# comm -23: Compare TEMP_NEW_TOTAL (file 1) och TEMP_PREV (file 2). 
+NEW_UNIQUE_ENTRIES=$(comm -23 "$TEMP_NEW_TOTAL" "$TEMP_PREV")
+ADDED_COUNT=$(echo "$NEW_UNIQUE_ENTRIES" | wc -l)
+
+# --- 4. Replace final file whit new complete list ---
+mv "$TEMP_NEW_TOTAL" "$OUTPUT_PATH"
+
+# --- 5. Report and log ---
+FINAL_COUNT=$(wc -l < "$OUTPUT_PATH")
+DIFFERENCE=$((FINAL_COUNT - PREVIOUS_COUNT))
+
+echo "--- Report: Merging complete ---"
+echo "Total number unique TaxID:s prior: $PREVIOUS_COUNT"
+echo "Total number unique TaxID:s post: $FINAL_COUNT"
+echo "New unique additions (difference): $DIFFERENCE"
+echo "Updated file: $OUTPUT_PATH"
+
+if [ "$ADDED_COUNT" -gt 0 ]; then
+    echo "Log $ADDED_COUNT new unique posterna till $LOG_PATH"
+    
+    # Add new TaxIDs in the log file
+    echo "--- New unique TaxID:s added in this run: ($ADDED_COUNT) ---" >> "$LOG_PATH"
+    echo "$NEW_UNIQUE_ENTRIES" >> "$LOG_PATH"
+    echo "--- No more additions ---" >> "$LOG_PATH"
+else
+    echo "No new TaxID:s found."
+fi
+
+# Clean temporary files
+rm -f "$TEMP_PREV" 
+
+echo "Process completed."

@@ -1,3 +1,8 @@
+# Batch processes KrakenUniq reports by calling a Python filtering script for each sample.
+# Usage: sbatch krakenuniq_filtering_script.job <batch_name> <unfiltered_directory>
+# Applies thresholds (1000 kmers, 200 reads) and extracts pathogens using a reference list.
+# Automatically organizes the resulting .filtered and .pathogens files into a new output directory.
+
 #!/bin/bash
 #SBATCH -A uppmax2025-2-380
 #SBATCH -M pelle
@@ -22,9 +27,10 @@ module load SciPy-bundle/2024.05-gfbf-2024a
 
 base=/proj/uppmax2025-2-380/project_work
 outdir=${base}/data/02_krakenuniq/${batch}/filtered_krakenuniq_output
+mkdir -p $outdir
 
 script=${base}/scripts/02_krakenuniq_scripts/filter_krakenuniq.py
-pathogen_list=${base}/resources/krakenuniq_resources/pathogenomesFound.tab
+pathogen_list=${base}/resources/krakenuniq_resources/bacterial_pathogens_with_taxid.tab
 
 for i in "$input_dir"/*.krakenuniq.output; do
     sample=$(basename "$i")

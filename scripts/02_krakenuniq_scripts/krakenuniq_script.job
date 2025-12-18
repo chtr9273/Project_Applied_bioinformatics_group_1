@@ -1,3 +1,8 @@
+# SLURM array script for taxonomic profiling using KrakenUniq on a per-sample basis.
+# Usage: sbatch --array=1-N%M krakenuniq_script.job <batch_name> <sample_list_file>
+# Optimizes performance by copying the microbial database to node-local storage ($SNIC_TMP).
+# Classifies host-removed reads, compresses large outputs, and saves reports to the project directory.
+
 #!/bin/bash
 #SBATCH -A uppmax2025-2-380
 #SBATCH -M pelle
@@ -6,12 +11,10 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=16
 #SBATCH --exclusive
-#SBATCH -t 24:00:00
+#SBATCH -t 10:00:00
 #SBATCH -J krakenuniq_taxonomic_profiling_data
 #SBATCH -o /proj/uppmax2025-2-380/project_work/logs/02_krakenuniq_logs/%j.out
 #SBATCH -e /proj/uppmax2025-2-380/project_work/logs/02_krakenuniq_logs/%j.err
-
-# OBS: Remember to run as "sbatch --array=1-N%M krakenuniq_script.job batch_name sample_list"
 
 set -euo pipefail
 

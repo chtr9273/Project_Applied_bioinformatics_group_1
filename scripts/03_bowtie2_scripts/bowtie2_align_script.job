@@ -1,116 +1,128 @@
+# SLURM array script for verifying KrakenUniq hits by aligning reads to specific pathogen genomes using Bowtie2.
+# Usage: sbatch --array=1-N%M bowtie2_align_script.job <batch_name>
+# Iterates through identified TaxIDs from the .pathogens file and maps host-removed reads to matching local references.
+# Outputs sorted and indexed BAM files for each detected pathogen to enable coverage analysis and visualization.
+
 #!/bin/bash
 #SBATCH -A uppmax2025-2-380
 #SBATCH -M pelle
 #SBATCH -p pelle
-#SBATCH -n 16
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
 #SBATCH -t 12:00:00
 #SBATCH -J bowtie2_align
 #SBATCH -o /proj/uppmax2025-2-380/project_work/logs/03_bowtie2_logs/bowtie2_align_logs/%j.out
 #SBATCH -e /proj/uppmax2025-2-380/project_work/logs/03_bowtie2_logs/bowtie2_align_logs/%j.err
 
+set -euxo pipefail
+
 module load Bowtie2/2.5.4-GCCcore-13.3.0
 module load SAMtools/1.22-GCC-13.3.0
 
+# Check command-line arguments
+if [ $# -ne 1 ]; then
+    echo "Usage: sbatch --array=1-N%M $0 <batch_name>"
+    exit 1
+fi
+BATCH=$1
+
 # Pathways
 BASE=/proj/uppmax2025-2-380/project_work
-RAW=$BASE/test_data/00_raw_data
-FILTERED=$BASE/test_data/02_krakenuniq/filtered_krakenuniq_output
-DBDIR=$BASE/resources/references/reference_db
-FASTA_DIR=$DBDIR/fasta
-BT2_DIR=$DBDIR/bt2
+INPUTDIR=$BASE/data/01_host_removal/$BATCH/host_removed
+FILTERED=$BASE/data/02_krakenuniq/$BATCH/filtered_krakenuniq_output
+DBDIR=$BASE/resources/references/reference_db 
+OUTBASE=$BASE/data/03_bowtie2/$BATCH
+mkdir -p "$OUTBASE" 
 
-OUTBASE=$BASE/test_data/03_bowtie2
-mkdir -p "$OUTBASE" "$BT2_DIR"
+SAMPLELIST=$BASE/data/00_raw_data/$BATCH/${BATCH}_fq_files.txt
 
-SAMPLELIST=$RAW/test_data_fq_files.txt
-echo "Bowtie2 alignment started at: $(date)"
+# Select sample for this array task
+SAMPLE=$(sed -n "${SLURM_ARRAY_TASK_ID}p" "$SAMPLELIST")
+[[ -z "$SAMPLE" ]] && { echo "No sample found for SLURM_ARRAY_TASK_ID"; exit 1; }
 
-# Loop over samples
-while read SAMPLE; do
-    [[ -z "$SAMPLE" ]] && continue
-    echo " Sample: $SAMPLE"
+echo "Bowtie2 alignment started for sample: $SAMPLE at $(date)"
 
-    BASENAME=$(basename "$SAMPLE" .fastq.gz)
+BASENAME=$(basename "$SAMPLE" .fastq.gz)
+READS="$INPUTDIR/${BASENAME}_unaligned_to_hg38.fastq.gz"
+FILTERFILE="$FILTERED/${BASENAME}.krakenuniq.output.pathogens"
 
-    READS="$RAW/${BASENAME}.fastq.gz"
-    FILTERFILE="$FILTERED/${BASENAME}.fastq.gz.krakenuniq.output.pathogens"
+# Validate that fastq and filtered KrakenUniq files exist
+if [[ ! -s "$READS" ]]; then
+    echo "Missing reads file: $READS"
+    exit 0 
+fi
+if [[ ! -s "$FILTERFILE" ]]; then
+    echo "Missing filtered KrakenUniq file: $FILTERFILE"
+    exit 0
+fi
 
-    # Validate
-    if [[ ! -s "$READS" ]]; then
-        echo "Missing reads file: $READS"
+OUTDIR="$OUTBASE/$BASENAME"
+mkdir -p "$OUTDIR"
+
+# Create scratch for mapping
+SCRATCH_DIR="$SNIC_TMP/${BASENAME}"
+rm -rf "$SCRATCH_DIR"
+mkdir -p "$SCRATCH_DIR"
+rsync -a "$READS" "$SCRATCH_DIR/"
+LOCAL_READS="$SCRATCH_DIR/${BASENAME}_unaligned_to_hg38.fastq.gz"
+
+# Loop over taxID's
+cut -f7 "$FILTERFILE" | tail -n +2 | sort -u | while read TAXID; do
+    [[ -z "$TAXID" ]] && continue
+    
+    INDEX_PREFIX="$DBDIR/${TAXID}/${TAXID}"
+    REF_FASTA="$DBDIR/${TAXID}/${TAXID}.fasta"
+    FINAL_BAM="$OUTDIR/${BASENAME}.${TAXID}.bam"
+
+    # 1. If Fasta for TaxID is missing
+    if [[ ! -s "$REF_FASTA" ]]; then
+        echo "Reference FASTA MISSING for TaxID $TAXID."
+        echo "Expected file: $REF_FASTA. Skipping alignment for this TaxID."
+        continue 
+    fi
+
+    # 2. If indexfile for TaxID is missing
+    if [[ ! -s "${INDEX_PREFIX}.1.bt2l" ]]; then
+        echo "Bowtie2 Index missing for TaxID $TAXID."
+        echo "Expected index file: ${INDEX_PREFIX}.1.bt2l. Skipping alignment for this TaxID."
         continue
     fi
-    if [[ ! -s "$FILTERFILE" ]]; then
-        echo "Missing filtered KrakenUniq file: $FILTERFILE"
+
+    # 3. Control whether the final BAM-file already exists
+    if [[ -s "$FINAL_BAM" ]]; then
+        echo "Skipping $TAXID: BAM file $FINAL_BAM already exists."
         continue
     fi
+    
+    echo "Mapping reads to TaxID $TAXID..."
+    start=$(date +%s)
+    
+    TEMP_BAM_PATH="$SCRATCH_DIR/${TAXID}.bam"
 
-    OUTDIR="$OUTBASE/$BASENAME"
-    mkdir -p "$OUTDIR"
+    # Bowtie2 alignment
+    bowtie2 --end-to-end --very-sensitive \
+        -x "$INDEX_PREFIX" \
+        -U "$LOCAL_READS" \
+        -p 16 \
+    | samtools view -bS -q 1 - \
+    | samtools sort -@ 8 -o "$TEMP_BAM_PATH"
+    
+    samtools index "$TEMP_BAM_PATH"
 
-    # Create scratch for mapping
-    SCRATCH_DIR="$SNIC_TMP/${BASENAME}"
-    rm -rf "$SCRATCH_DIR"
-    mkdir -p "$SCRATCH_DIR"
+    # Move results back to project storage
+    rsync -a "$TEMP_BAM_PATH" "$FINAL_BAM"
+    rsync -a "$TEMP_BAM_PATH.bai" "$FINAL_BAM.bai"
 
-    cp "$READS" "$SCRATCH_DIR/"
-    LOCAL_READS="$SCRATCH_DIR/${BASENAME}.fastq.gz"
+    echo "Done: $FINAL_BAM"
 
-    # Loop over taxID's
-    cut -f7 "$FILTERFILE" | tail -n +2 | sort -u | while read TAXID; do
-        [[ -z "$TAXID" ]] && continue
+    # Clean up
+    rm -f "$TEMP_BAM_PATH"*
 
-        echo "taxID $TAXID"
+    end=$(date +%s)
+    echo "Total mapping time for TaxID $TAXID: $((end - start)) seconds"
+    
+done 
 
-        REF_FASTA="$FASTA_DIR/${TAXID}.fasta"
-        if [[ ! -s "$REF_FASTA" ]]; then
-            echo "No reference FASTA for $TAXID — skipping"
-            continue
-        fi
-
-        INDEX_PREFIX="$BT2_DIR/${TAXID}"
-
-        # Build index if missing
-        if [[ ! -s "${INDEX_PREFIX}.1.bt2" ]]; then
-            echo "Building bowtie2 index for $TAXID"
-            bowtie2-build "$REF_FASTA" "$INDEX_PREFIX"
-        fi
-
-        BAM="$OUTDIR/${BASENAME}.${TAXID}.bam"
-        if [[ -s "$BAM" ]]; then
-            echo "BAM already exists. skipping"
-            continue
-        fi
-
-        echo "Mapping reads (in scratch)..."
-        start=$(date +%s)
-
-        bowtie2 --end-to-end --very-sensitive \
-            -x "$INDEX_PREFIX" \
-            -U "$LOCAL_READS" \
-            -p 8 \
-        | samtools view -bS -q 1 - \
-        | samtools sort -o "$SCRATCH_DIR/${TAXID}.bam"
-
-        samtools index "$SCRATCH_DIR/${TAXID}.bam"
-
-
-        end=$(date +%s)
-        echo "Mapping time: $((end - start)) seconds"
-
-        # Move results back to project storage
-        cp "$SCRATCH_DIR/${TAXID}.bam" "$BAM"
-        cp "$SCRATCH_DIR/${TAXID}.bam.bai" "$BAM.bai"
-
-        echo " Done: $BAM"
-
-        # Clean taxID-specific temp files
-        rm -f "$SCRATCH_DIR/${TAXID}.bam"*
-    done
-
-    # Remove reads from scratch
-    rm -rf "$SCRATCH_DIR"
-
-done < "$SAMPLELIST"
-
+# Remove reads from scratch
+rm -rf "$SCRATCH_DIR"
 echo "Bowtie2 alignment completed at: $(date)"

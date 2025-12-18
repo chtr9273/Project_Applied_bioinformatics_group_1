@@ -1,3 +1,8 @@
+# Filters KrakenUniq output based on unique k-mer counts and taxonomic read depth.
+# Usage: python3 script.py <input_file> <min_kmers> <min_reads> <organism_taxid_list>
+# Keeps only 'species' rank and sorts results by relative abundance percentage.
+# Saves filtered results to '{input}.filtered' and matches from the list to '{input}.pathogens'.
+
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 

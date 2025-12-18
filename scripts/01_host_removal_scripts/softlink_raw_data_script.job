@@ -1,3 +1,8 @@
+# Creates symbolic links to raw FASTQ files to avoid data duplication in the project directory.
+# Usage: sbatch softlink_raw_data_script.job <batch_name>
+# Reads filenames from a sample list and links them from central storage to the batch folder.
+# Ensures the analysis pipeline has access to raw data without consuming extra disk space.
+
 #!/bin/bash
 #SBATCH -A uppmax2025-2-380
 #SBATCH -M pelle
@@ -5,8 +10,6 @@
 #SBATCH -n 4
 #SBATCH -t 02:00:00
 #SBATCH -J softlink_fastq_files
-
-# OBS: Remember to run as "sbatch softlink_raw_data_script.job batchn"
 
 # Check for batch argument
 if [ -z "$1" ]; then
@@ -19,6 +22,7 @@ base=/proj/uppmax2025-2-380
 datadir=${base}/private/DATA/FASTQ/${batch}
 samples=${base}/project_work/data/00_raw_data/${batch}/${batch}_fq_files.txt
 outdir=${base}/project_work/data/00_raw_data/${batch}
+mkdir -p $outdir
 
 while read -r i; do
     echo "Linking: ${datadir}${i} -> ${outdir}"
