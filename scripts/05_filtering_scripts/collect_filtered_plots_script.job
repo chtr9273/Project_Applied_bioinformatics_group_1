@@ -22,8 +22,8 @@ AUTH_DIR=$BASE/data/04_authentication
 OUTPUT_BASE=$BASE/data/05_filtered_summarized
 mkdir -p "$OUTPUT_BASE"
 
-# Batches
-BATCHES=("batch4")
+# Batches (add the batches that are to be filtered)
+BATCHES=("batch5" "batch6")
 
 # Process each batch
 for BATCH in "${BATCHES[@]}"; do
