@@ -1,0 +1,14 @@
+library/invertebrate/Complete_Genome/Caenorhabditis_elegans_strain_Bristol_N2-tax6239-GCA_000002985.3_WBcel235_genomic-dustmasked.fna
+library/human/library.fna
+library/vertebrate_mammalian/Complete_Genome/Canis_lupus-tax9612-GCA_902724515.1_NHTN-1.2048H_genomic-dustmasked.fna
+library/vertebrate_mammalian/Complete_Genome/Canis_lupus-tax9612-GCA_902723875.1_AL2797_genomic-dustmasked.fna
+library/nt-protozoa-dustmasked.fna
+library/nt-bacteria-dustmasked.fna
+library/nt-fungi-dustmasked.fna
+library/plant/Complete_Genome/Micromonas_commoda_strain_RCC299-tax296587-GCA_000090985.2_ASM9098v2_genomic-dustmasked.fna
+library/plant/Complete_Genome/Chloropicon_primus_strain_CCMP1205-tax1764295-GCA_007859695.1_ASM785969v1_genomic-dustmasked.fna
+library/plant/Complete_Genome/Cyanidioschyzon_merolae_strain_10D-tax280699-GCA_000091205.1_ASM9120v1_genomic-dustmasked.fna
+library/plant/Complete_Genome/Ostreococcus_lucimarinus_CCE9901-tax436017-GCA_000092065.1_ASM9206v1_genomic-dustmasked.fna
+library/nt-archaea-dustmasked.fna
+library/nt-parasitic_worms-dustmasked.fna
+library/nt-viral-dustmasked.fna
