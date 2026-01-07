@@ -22,8 +22,8 @@ AUTH_DIR=$BASE/data/04_authentication
 OUTPUT_BASE=$BASE/data/05_filtered_summarized
 mkdir -p "$OUTPUT_BASE"
 
-# Batches (add the batches that are to be filtered)
-BATCHES=("batch5" "batch6")
+# Batches (add the batches for which the plots should be compiled)
+BATCHES=("batch1" "batch2" "batch3" "batch4")
 
 # Process each batch
 for BATCH in "${BATCHES[@]}"; do
@@ -100,7 +100,7 @@ for BATCH in "${BATCHES[@]}"; do
         if [[ -f "$PMD_HIST" ]]; then
             magick -density 600 "$PMD_HIST" -background white -alpha remove "$PMD_PNG" 2>/dev/null
             if [[ -f "$PMD_PNG" ]]; then
-                magick "$PMD_PNG" -gravity South -chop x200 "$PMD_CUT" 2>/dev/null
+                magick "$PMD_PNG" -gravity South -chop x240 "$PMD_CUT" 2>/dev/null
                 if [[ -f "$PMD_CUT" ]]; then
                     ANCIENT_PLOTS+=("$PMD_CUT")
                     ALL_PLOTS+=("$PMD_CUT")
@@ -109,15 +109,17 @@ for BATCH in "${BATCHES[@]}"; do
         fi
 
         # ----------------------------
-        # MODERN PLOTS (symlinks)
+        # MODERN PLOTS
         # ----------------------------
         MODERN_DIR="$AUTH_DIR/$BATCH/modern_authentication/$sample/${sample}.${taxid_clean}"
-        for PLOT in "$MODERN_DIR"/*; do
-            if [[ -f "$PLOT" ]]; then
-                ln -s "$PLOT" "$SAMPLE_OUTPUT/"
-                ALL_PLOTS+=("$SAMPLE_OUTPUT/$(basename "$PLOT")")
-            fi
-        done
+        if [[ -d "$MODERN_DIR" ]]; then
+            for PLOT in "$MODERN_DIR"/*; do
+                if [[ -f "$PLOT" ]]; then
+                    cp "$PLOT" "$SAMPLE_OUTPUT/"
+                    ALL_PLOTS+=("$SAMPLE_OUTPUT/$(basename "$PLOT")")
+                fi
+            done
+        fi
 
         # ----------------------------
         # COLLAGE of ancient plots
