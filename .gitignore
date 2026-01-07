@@ -3,7 +3,7 @@ data/01_host_removal/*
 data/02_krakenuniq/*
 data/03_bowtie2/*
 data/04_authentication/*
-data/05_filtered_summarized/*
+data/06_cross_mapping/*
 docs/
 environments/
 logs/*
