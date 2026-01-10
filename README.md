@@ -54,13 +54,12 @@ scripts \
 │  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ├── krakenuniq_filtering_script.job \
 │  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; └── krakenuniq_script.job \
 ├── 03_bowtie2_scripts \
-│  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ├── bowtie2_align_script_parallell.job \
+│  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ├── bowtie2_align_script.job \
 │  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ├── collect_taxids.job \
 │  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ├── compute_coverage_script.job \
+│  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ├── database_inclusions.tsv \
 │  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ├── extract_databases_mult.job \
-│  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ├── import_multiple_references.tsv \
 │  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ├── merge_taxids_script.job \
-│  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; └── missing_taxids.tsv \
 ├── 04_authentication_scripts \
 │  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ├── ancient_authentication \
 │  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; │  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ├── mapdamage_distribution_script.job \
@@ -84,35 +83,6 @@ scripts \
   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; └── species_filter_script.job 
 
 By following this structure, out of the specified pathways, only the base path needs to be adjusted in some scripts. 
-
-## Typical workflow
-
-### 01 Host removal
-Describe how to run the host removal
-
-### 02 Krakenuniq
-Describe how to run kraken
-
-### 03 Bowtie2
-Describe how to run bowtie2
-
-### 04 Authentication
-While the previous steps required sequential execution, the modern and ancient authentication can be run in parallel since neither of their outputs 
-are required for the other one. 
-
-#### 04.1 Modern authentication
-Describe how to run modern auth
-
-#### 04.2 Ancient authentication
-Describe how to run ancient auth
-
-##### mapDamage
-
-##### PMD scores
-
-### 05 Filtering
-
-
 
 
 
