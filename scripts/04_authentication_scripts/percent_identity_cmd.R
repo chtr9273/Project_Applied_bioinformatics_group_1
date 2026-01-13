@@ -5,9 +5,9 @@ if (length(args) < 2) {
   stop("Usage: Rscript script.R <input_depth_file> <output_png>")
 }
 
-#add arguments to respective variables
+#arguments to respective variables
 input_path <- args[1]
-output_path <-args[2]
+output_path <- args[2]
 
 #load Rsamtools
 library(Rsamtools)
@@ -36,70 +36,52 @@ md    <- bam$tag$MD[keep]
 
 #define function header
 count_mismatches_md <- function(md_string) {
-  #return NA if md_string is missing
-  if (is.na(md_string)){
-    return(NA)}
-  #find all matches to a pattern, "[A-Za-z]" means all lower- and uppercase letters 
-  loc <- gregexpr("[A-Za-z]", md_string)[[1]]
-  #return 0 if no mismatches are found
-  if (loc[1] == -1){
-    return(0)}
-  #return the length of loc, which corresponds to number of mismatches
-  return(length(loc))
+  if (is.na(md_string)) return(NA)
+  # extract mismatch runs (letters only)
+  mismatch_runs <- regmatches(md_string, gregexpr("[A-Za-z]+", md_string))[[1]]
+  if (length(mismatch_runs) == 0) return(0)
+  sum(nchar(mismatch_runs))
 }
 
 #define function header
 parse_cigar <- function(cigar_string) {
-  #separate various cigar operations
-  #find number-letter pairs in cigar string
   matches <- gregexpr("[0-9]+[A-Z]", cigar_string)
-  #extract the actual pairs in matches
   ops <- regmatches(cigar_string, matches)[[1]]
   
-  #extract numbers from operation as numerical vector
   nums <- as.numeric(gsub("[A-Z]", "", ops))
-  #extract letters from operations in a vector
   letters <- gsub("[0-9]", "", ops)
-  #calculate number of aligned bases (matches or mismatches: M, =, X)
-  matches <- sum(nums[letters %in% c("M", "=", "X")])
-  #calculate number of inserts("I")
+  
+  matches_count <- sum(nums[letters %in% c("M", "=", "X")])
   inserts <- sum(nums[letters == "I"])
-  #calculate number of deletions("D")
   deletes <- sum(nums[letters == "D"])
-  #return a numeric list with matches, inserts and deletions from cigar string
-  return(list(matches = matches, inserts = inserts, deletes = deletes))
+  
+  return(list(matches = matches_count, inserts = inserts, deletes = deletes))
 }
 
 #compute percent identity
-
-#create vector for storing percent identity values for each read
-#the vector is numeric with zeros, and number of elements corresponding to the
-#initial number of reads
 percent_identity <- numeric(length(cigar))
 
-#loop over all reads
 for (i in seq_along(cigar)) {
-  
-  #extract all aligned bases, inserts and deletions with parse_cigar function
   cg <- parse_cigar(cigar[i])
-  
-  #extract mismatches with count_mismatches_md function
   mm <- count_mismatches_md(md[i])
   
-  #calculate the total alignment length
-  total_aligned <- cg$matches + cg$inserts + cg$deletes
+  total_aligned <- cg$matches + cg$deletes
+  if (total_aligned == 0) {
+    percent_identity[i] <- NA
+    next
+  }
   
-  #calculate number of correctly aligned bases
   correct_bases <- cg$matches - mm
-  
-  #calculate percentage identity for each read
   percent_identity[i] <- (correct_bases / total_aligned) * 100
 }
 
 #create barplot
 
-#round down to closest integer
-perc_id_round <- floor(percent_identity)
+#round to nearest integer
+perc_id_round <- round(percent_identity)
+
+#remove NAs
+perc_id_round <- perc_id_round[!is.na(perc_id_round)]
 
 #create a frequency table
 freq_table <- table(perc_id_round)
@@ -115,5 +97,9 @@ barplot(
   ylab = "Number of Reads",
   main = "Percent Identity Distribution of Aligned Reads",
   las = 2)
+
+#average identity
+mtext(paste0(round(mean(percent_identity, na.rm = TRUE), 2), 
+             "% average identity"), cex = 0.8)
 
 dev.off()
