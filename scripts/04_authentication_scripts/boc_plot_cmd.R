@@ -20,45 +20,30 @@ N_tiles <- 500
 start <- min(df$Pos)
 end   <- max(df$Pos)
 
-
 #Setup tile borders
 tiles <- seq(start, end, length.out = N_tiles + 1) 
 
-#Create an empty list with one element per tile
-boc_list <- vector("list", N_tiles)
+#Create numeric vector for BoC, aligned to positions
+boc_list <- vector("numeric", nrow(df))
 
 for(i in 1:N_tiles) {
   
-  #positions in this tile
-  df_loc <- df[df$Pos >= tiles[i] & df$Pos < tiles[i+1], ]
+  #indices of positions in this tile
+  idx <- which(df$Pos >= tiles[i] & df$Pos <= tiles[i+1])
   
-  if (nrow(df_loc) > 0) {
+  if(length(idx) > 0) {
     
     #breadth of coverage for the specific tile
-    boc_value <- sum(df_loc$N_reads > 0) / nrow(df_loc)
+    boc_value <- sum(df$N_reads[idx] > 0) / length(idx)
     
-    #store the value for each position in each tile
-    boc_list[[i]] <- rep(boc_value, nrow(df_loc))
+    #store the value for each position in this tile
+    boc_list[idx] <- boc_value
     
-  } else {
-    #Store an empty vector if this tile contains no positions at all
-    boc_list[[i]] <- numeric(0)
   }
 }
 
-#flaten boc_list
-boc <- unlist(boc_list)
-
-
-#make sure boc has the same number of elements as the rows in the dataframe
-len_diff <- nrow(df) - length(boc)
-if (len_diff > 0) {
-  boc <- c(boc, rep(0, len_diff))}
-
-
 # add boc to the original data
-df$boc <- boc
-
+df$boc <- boc_list
 
 png(filename = output_path, width = 1600, height = 1200, res = 300, type = "cairo")
 
