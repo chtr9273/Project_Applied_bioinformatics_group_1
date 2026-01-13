@@ -1,0 +1,40 @@
+#!/bin/bash -l
+#SBATCH -A uppmax2025-2-380
+#SBATCH -M pelle
+#SBATCH -p pelle
+#SBATCH -n 2
+#SBATCH -t 03:30:00
+#SBATCH -J summary_modern
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user christos.tricopoulos.9273@student.uu.se
+#SBATCH -o /proj/uppmax2025-2-380/project_work/logs/04_authentication_logs/%x.%j.out
+#SBATCH -e /proj/uppmax2025-2-380/project_work/logs/04_authentication_logs/%x.%j.err
+
+# Load required modules
+module load R/4.4.2-gfbf-2024a
+module load R-bundle-CRAN/2024.11-foss-2024a
+module load R-bundle-Bioconductor/3.20-foss-2024a-R-4.4.2
+
+#current batch
+current_batch="batch4"
+
+# Base project directory
+base="/proj/uppmax2025-2-380/project_work"
+
+# Directory with your R scripts
+script_dir="$base/scripts/04_authentication_scripts"
+
+modern_vis="$base/data/04_authentication/${current_batch}/modern_authentication"
+
+for sample in "$modern_vis"/*/; do
+    sample_name=$(basename "$sample")
+
+    for pathogen in "$sample"*/; do
+        pathogen_name=$(basename "$pathogen")
+        echo "Processing $sample_name/$pathogen_name"
+
+        Rscript "$script_dir/summary_cmd.R" \
+            "$pathogen" \
+            "${pathogen}${pathogen_name}_summary.png"
+    done
+done
