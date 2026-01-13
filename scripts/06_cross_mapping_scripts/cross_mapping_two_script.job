@@ -1,0 +1,211 @@
+#!/bin/bash
+#SBATCH -A uppmax2025-2-380
+#SBATCH -M pelle
+#SBATCH -p pelle
+#SBATCH -n 1
+#SBATCH -t 01:00:00
+#SBATCH -J cross_mapping
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user agnes.niemi.0310@student.uu.se
+#SBATCH -o /proj/uppmax2025-2-380/project_work/logs/06_cross_mapping_logs/%x.%j.out
+#SBATCH -e /proj/uppmax2025-2-380/project_work/logs/06_cross_mapping_logs/%x.%j.err
+
+# =============================================================================
+# Purpose: Compare two BAM files and identify overlapping reads
+# Usage: Edit BAM1, BAM2, GENOME1_TAXID, GENOME2_TAXID below, then submit
+# =============================================================================
+
+START_TIME=$(date +%s)
+
+# Paths
+BASE=/proj/uppmax2025-2-380/project_work
+OUTDIR=$BASE/data/06_cross_mapping
+mkdir -p "$OUTDIR"
+
+BAM1="/proj/uppmax2025-2-380/project_work/data/03_bowtie2/batch4/ajv36/ajv36.495.bam"
+BAM2="/proj/uppmax2025-2-380/project_work/data/03_bowtie2/batch4/ajv36/ajv36.1302.bam"
+GENOME1_TAXID="495"
+GENOME2_TAXID="1302"
+
+# Path to visualization script and taxid lookup file
+PLOT_SCRIPT="$BASE/scripts/06_cross_mapping_scripts/plot_overlap.py"
+TAXID_FILE="$BASE/resources/taxids_after_filtering/batch4_taxids.txt"
+
+# Load modules
+module load SAMtools/1.22-GCC-13.3.0
+
+echo "Start time: $(date)"
+echo ""
+echo "BAM 1: $BAM1"
+echo "BAM 2: $BAM2"
+echo "Genome 1 TaxID: $GENOME1_TAXID"
+echo "Genome 2 TaxID: $GENOME2_TAXID"
+echo ""
+
+# Look up species names from taxid file
+if [[ -f "$TAXID_FILE" ]]; then
+    GENOME1_NAME=$(awk -v taxid="$GENOME1_TAXID" '$1 == taxid {print $2, $3; exit}' "$TAXID_FILE")
+    GENOME2_NAME=$(awk -v taxid="$GENOME2_TAXID" '$1 == taxid {print $2, $3; exit}' "$TAXID_FILE")
+    
+    # Fallback to taxid if not found
+    if [[ -z "$GENOME1_NAME" ]]; then
+        GENOME1_NAME="$GENOME1_TAXID"
+        echo "Warning: Species name not found for taxid $GENOME1_TAXID, using taxid"
+    fi
+    if [[ -z "$GENOME2_NAME" ]]; then
+        GENOME2_NAME="$GENOME2_TAXID"
+        echo "Warning: Species name not found for taxid $GENOME2_TAXID, using taxid"
+    fi
+    
+    echo "Genome 1: $GENOME1_NAME"
+    echo "Genome 2: $GENOME2_NAME"
+else
+    echo "Warning: Taxid file not found at $TAXID_FILE"
+    echo "Using taxids as labels"
+    GENOME1_NAME="$GENOME1_TAXID"
+    GENOME2_NAME="$GENOME2_TAXID"
+fi
+echo ""
+
+# Verify files exist
+if [[ ! -f "$BAM1" ]] || [[ ! -f "$BAM2" ]]; then
+    echo "ERROR: BAM file(s) not found!"
+    exit 1
+fi
+
+# Create output directory
+SAMPLE_NAME=$(basename $(dirname "$BAM1"))
+COMPARISON_NAME="${GENOME1_TAXID}_vs_${GENOME2_TAXID}"
+OUTDIR="$OUTDIR/${SAMPLE_NAME}/${COMPARISON_NAME}"
+mkdir -p "$OUTDIR"
+
+echo "Output directory: $OUTDIR"
+echo ""
+
+# ==================== STEP 1: Extract Read Names ====================
+echo "Step 1: Extracting read names..."
+
+samtools view -F 4 "$BAM1" | cut -f1 | sort -u > "$OUTDIR/${GENOME1_TAXID}_reads.txt"
+COUNT1=$(wc -l < "$OUTDIR/${GENOME1_TAXID}_reads.txt")
+echo "  ${GENOME1_NAME}: $COUNT1 reads"
+
+samtools view -F 4 "$BAM2" | cut -f1 | sort -u > "$OUTDIR/${GENOME2_TAXID}_reads.txt"
+COUNT2=$(wc -l < "$OUTDIR/${GENOME2_TAXID}_reads.txt")
+echo "  ${GENOME2_NAME}: $COUNT2 reads"
+
+# ==================== STEP 2: Find Overlaps ====================
+echo ""
+echo "Step 2: Finding overlapping reads..."
+
+comm -12 "$OUTDIR/${GENOME1_TAXID}_reads.txt" "$OUTDIR/${GENOME2_TAXID}_reads.txt" > "$OUTDIR/overlapping.txt"
+comm -23 "$OUTDIR/${GENOME1_TAXID}_reads.txt" "$OUTDIR/${GENOME2_TAXID}_reads.txt" > "$OUTDIR/${GENOME1_TAXID}_unique.txt"
+comm -13 "$OUTDIR/${GENOME1_TAXID}_reads.txt" "$OUTDIR/${GENOME2_TAXID}_reads.txt" > "$OUTDIR/${GENOME2_TAXID}_unique.txt"
+
+OVERLAP=$(wc -l < "$OUTDIR/overlapping.txt")
+UNIQUE1=$(wc -l < "$OUTDIR/${GENOME1_TAXID}_unique.txt")
+UNIQUE2=$(wc -l < "$OUTDIR/${GENOME2_TAXID}_unique.txt")
+
+echo "  Overlapping: $OVERLAP"
+echo "  Unique to ${GENOME1_NAME}: $UNIQUE1"
+echo "  Unique to ${GENOME2_NAME}: $UNIQUE2"
+
+OVERLAP_PCT1=$(awk -v o="$OVERLAP" -v t="$COUNT1" 'BEGIN {printf "%.1f", (t>0)?(o/t)*100:0}')
+OVERLAP_PCT2=$(awk -v o="$OVERLAP" -v t="$COUNT2" 'BEGIN {printf "%.1f", (t>0)?(o/t)*100:0}')
+
+echo ""
+echo "  ${OVERLAP_PCT1}% of ${GENOME1_NAME} reads map to both"
+echo "  ${OVERLAP_PCT2}% of ${GENOME2_NAME} reads map to both"
+
+# ==================== STEP 3: Create Summary ====================
+echo ""
+echo "Step 3: Creating summary..."
+
+SUMMARY="$OUTDIR/summary.txt"
+
+cat > "$SUMMARY" << EOF
+========================================
+BAM Read Overlap Analysis - Summary
+========================================
+Analysis Date: $(date)
+Sample: $SAMPLE_NAME
+Comparison: $COMPARISON_NAME
+
+Input Files:
+  BAM 1: $BAM1
+  BAM 2: $BAM2
+
+Genomes:
+  Genome 1: ${GENOME1_NAME} (TaxID: ${GENOME1_TAXID})
+  Genome 2: ${GENOME2_NAME} (TaxID: ${GENOME2_TAXID})
+
+Results:
+--------
+Total Reads:
+  ${GENOME1_NAME}: ${COUNT1}
+  ${GENOME2_NAME}: ${COUNT2}
+
+Overlap:
+  Overlapping reads: ${OVERLAP} (${OVERLAP_PCT1}% of ${GENOME1_NAME}, ${OVERLAP_PCT2}% of ${GENOME2_NAME})
+  Unique to ${GENOME1_NAME}: ${UNIQUE1}
+  Unique to ${GENOME2_NAME}: ${UNIQUE2}
+
+Output Files:
+-------------
+  ${GENOME1_TAXID}_reads.txt      - All reads mapping to genome 1
+  ${GENOME2_TAXID}_reads.txt      - All reads mapping to genome 2
+  overlapping.txt                  - Reads mapping to BOTH genomes
+  ${GENOME1_TAXID}_unique.txt     - Reads only in genome 1
+  ${GENOME2_TAXID}_unique.txt     - Reads only in genome 2
+  overlap_plot.png                 - Visualization
+  summary.txt                      - This file
+
+========================================
+EOF
+
+# ==================== STEP 4: Create Visualization ====================
+echo ""
+echo "Step 4: Creating visualization..."
+
+# Load plotting modules
+module load matplotlib/3.9.2-gfbf-2024a
+module load Seaborn/0.13.2-gfbf-2024a
+
+# Check if matplotlib-venn is installed
+python -c "import matplotlib_venn" 2>/dev/null
+if [ $? -ne 0 ]; then
+    echo "  Installing matplotlib-venn..."
+    pip install --user matplotlib-venn --quiet
+fi
+
+# Check if plot script exists
+if [[ ! -f "$PLOT_SCRIPT" ]]; then
+    echo "  WARNING: Plot script not found at $PLOT_SCRIPT"
+    echo "  Skipping visualization."
+else
+    # Run visualization with species names
+    python "$PLOT_SCRIPT" "$GENOME1_NAME" "$GENOME2_NAME" "$UNIQUE1" "$UNIQUE2" "$OVERLAP" "$COUNT1" "$COUNT2" "$OUTDIR"
+fi
+
+# ==================== Display Results ====================
+echo ""
+cat "$SUMMARY"
+
+echo ""
+echo "=========================================="
+echo "Analysis Complete!"
+echo "=========================================="
+echo ""
+echo "All results saved to: $OUTDIR"
+echo "Visualization: $OUTDIR/overlap_plot.png"
+echo "Summary: $OUTDIR/summary.txt"
+echo ""
+
+# Calculate runtime
+END_TIME=$(date +%s)
+ELAPSED=$((END_TIME - START_TIME))
+HOURS=$((ELAPSED / 3600))
+MINUTES=$(((ELAPSED % 3600) / 60))
+SECONDS=$((ELAPSED % 60))
+
+printf "Total runtime: %02d:%02d:%02d\n" $HOURS $MINUTES $SECONDS
+echo ""
