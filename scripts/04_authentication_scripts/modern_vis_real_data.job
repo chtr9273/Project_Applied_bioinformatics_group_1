@@ -1,0 +1,108 @@
+#!/bin/bash -l
+#SBATCH -A uppmax2025-2-380
+#SBATCH -M pelle
+#SBATCH -p pelle
+#SBATCH -n 2
+#SBATCH -t 10:00:00
+#SBATCH -J modern_vis_real_data
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user christos.tricopoulos.9273@student.uu.se
+#SBATCH -o /proj/uppmax2025-2-380/project_work/logs/04_authentication_logs/%x.%j.out
+#SBATCH -e /proj/uppmax2025-2-380/project_work/logs/04_authentication_logs/%x.%j.err
+
+# Load required modules
+module load R/4.4.2-gfbf-2024a
+module load R-bundle-CRAN/2024.11-foss-2024a
+module load R-bundle-Bioconductor/3.20-foss-2024a-R-4.4.2
+module load SAMtools/1.22-GCC-13.3.0
+
+#current batch
+current_batch="batch6"
+
+# Base project directory
+base="/proj/uppmax2025-2-380/project_work"
+
+# Batch inclusion file
+batch_txt="$base/data/00_raw_data/$current_batch/${current_batch}_fq_files.txt"
+
+# Directory with your R scripts
+script_dir="$base/scripts/04_authentication_scripts"
+
+# Root directory for modern_visualization outputs
+modern_dir="$base/data/04_authentication/$current_batch"
+mkdir -p "$modern_dir"
+
+# Log file for missing BAMs inside modern_visualization
+failed_sample_log="$modern_dir/00_missing_bam.txt"
+> "$failed_sample_log"   # clear previous content
+
+# loop through samples using cat
+for sample in $(cat "$batch_txt"); do
+    name="${sample%.fastq.gz}"
+    echo "working with sample $name"
+
+    bam_files_directory="$base/data/03_bowtie2/$current_batch/$name"
+    
+    # through each sample that passed deamination filtering
+    for bam_file in "$bam_files_directory"/*.bam; do
+
+        # Skip if no BAM files are found
+        [[ ! -e "$bam_file" ]] && continue
+        
+        # Extract base_name (pathogen or BAM identifier)
+        base_name=$(basename "$bam_file" .bam)
+
+	    #add pathogen
+	    pathogen="${base_name##*.}"
+
+        # Find corresponding depth file
+        depth_file="$base/data/04_authentication/$current_batch/coverage/$name/${pathogen}.depth.txt"
+
+        # If depth.txt is missing, log it and skip this sample
+        if [[ ! -f "$depth_file" ]]; then
+            echo "$base_name" >> "$failed_sample_log"
+            echo "Warning: Depth file not found for $base_name, skipping sample."
+            continue
+        fi
+
+        # Create output directory for this sample/pathogen
+        output_dir="$modern_dir/$current_batch/$name/$base_name"
+        mkdir -p "$output_dir"
+
+        echo "Processing sample and pathogen: $base_name"
+
+        # BOC plot
+        Rscript "$script_dir/boc_plot_cmd.R" \
+            "$depth_file" \
+            "$output_dir/boc_plot.png"
+
+        # MAPQ extraction
+        samtools view "$bam_file" | cut -f5 > "$SNIC_TMP/${base_name}_mapq.txt"
+
+        # MAPQ plot
+        Rscript "$script_dir/mapq_plot_cmd.R" \
+            "$SNIC_TMP/${base_name}_mapq.txt" \
+            "$output_dir/mapq_plot.png"
+
+        # Edit distance plot
+        Rscript "$script_dir/edit_distance_plot_cmd.R" \
+            "$bam_file" \
+            "$output_dir/edit_distance_plot.png"
+
+        # Percent identity plot
+        Rscript "$script_dir/percent_identity_cmd.R" \
+            "$bam_file" \
+            "$output_dir/percent_identity_plot.png"
+
+        echo "Finished sample and pathogen: $base_name"
+
+    done
+
+    echo "finished with sample $name"
+
+done
+
+echo "finished all samples"
+
+
+
